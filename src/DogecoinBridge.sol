@@ -69,6 +69,9 @@ contract DogecoinBridge is UUPSUpgradeable, OwnableUpgradeable {
 
         uint256 totalAmount = 0;
         for (uint256 i = 0; i < proofs.length; i++) {
+            require(proofs[i].txHash != bytes32(0), "Invalid txHash");
+            require(proofs[i].destEvmAddress != address(0), "Invalid destEvmAddress");
+            require(bridgeInTxids[proofs[i].txHash] == false, "txHash already processed");
             require(dogechain.validateTransaction(batchId, proofs[i]), "Invalid SPV proof");
 
             // TODO: check doublehash(proofs[i].txBytes) with proofs[i].txHash
