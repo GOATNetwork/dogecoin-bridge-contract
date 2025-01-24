@@ -31,7 +31,11 @@ contract DogeToken is IDogeToken, ERC20Upgradeable, OwnableUpgradeable {
         return super.balanceOf(account);
     }
 
-    function transferFrom(address sender, address recipient, uint256 amount) public override(ERC20Upgradeable, IDogeToken) returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount)
+        public
+        override(ERC20Upgradeable, IDogeToken)
+        returns (bool)
+    {
         return super.transferFrom(sender, recipient, amount);
     }
 }

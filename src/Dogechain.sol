@@ -19,9 +19,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
         emit AdminAdded(msg.sender);
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     modifier onlyAdmin() {
         require(admins[msg.sender], "Caller is not an admin");
@@ -41,66 +39,40 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
         emit AdminRemoved(admin);
     }
 
-    function submitBatch(
-        uint256 startBlock,
-        uint256 totalElements,
-        bytes32 rootHash
-    ) external override onlyAdmin {
+    function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external override onlyAdmin {
         if (latestBatchId > 0) {
             Batch memory previousBatch = batches[latestBatchId - 1];
-            require(
-                startBlock ==
-                    previousBatch.startBlock + previousBatch.totalElements,
-                "Invalid startBlock"
-            );
+            require(startBlock == previousBatch.startBlock + previousBatch.totalElements, "Invalid startBlock");
         }
 
         require(startBlock > 0, "Start block must be greater than 0");
-        require(
-            totalElements > 0 && totalElements <= 720,
-            "Total elements must be greater than 0 and less than 720"
-        );
+        require(totalElements > 0 && totalElements <= 720, "Total elements must be greater than 0 and less than 720");
         require(rootHash != bytes32(0), "Root hash cannot be empty");
 
-        batches[latestBatchId] = Batch({
-            startBlock: startBlock,
-            totalElements: totalElements,
-            rootHash: rootHash
-        });
+        batches[latestBatchId] = Batch({startBlock: startBlock, totalElements: totalElements, rootHash: rootHash});
 
         emit BatchSubmitted(latestBatchId, startBlock, totalElements, rootHash);
         latestBatchId++;
     }
 
-    function getBatch(
-        uint256 batchId
-    ) external view override returns (Batch memory) {
+    function getBatch(uint256 batchId) external view override returns (Batch memory) {
         return batches[batchId];
     }
 
-    function validateTransaction(
-        uint256 batchId,
-        SPVProof memory proof
-    ) public view override returns (bool) {
+    function validateTransaction(uint256 batchId, SPVProof memory proof) public view override returns (bool) {
         Batch memory batch = batches[batchId];
         require(batch.rootHash != bytes32(0), "Batch does not exist");
 
         require(
             BTCStyleMerkle.verifyMerkleProof(
-                batch.rootHash,
-                proof.blockMerkleProof,
-                computeBlockHeaderHash(proof.blockHeader),
-                proof.blockIndex
+                batch.rootHash, proof.blockMerkleProof, computeBlockHeaderHash(proof.blockHeader), proof.blockIndex
             ),
             "Invalid block proof"
         );
 
         require(
             BTCStyleMerkle.verifyMerkleProof(
-                proof.blockHeader.merkleRoot,
-                proof.txMerkleProof,
-                proof.txHash,
-                proof.txIndex
+                proof.blockHeader.merkleRoot, proof.txMerkleProof, proof.txHash, proof.txIndex
             ),
             "Invalid transaction proof"
         );
@@ -108,9 +80,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
         return true;
     }
 
-    function extractAmount(
-        bytes memory txData
-    ) external pure override returns (uint256) {
+    function extractAmount(bytes memory txData) external pure override returns (uint256) {
         // Mock implementation
         return abi.decode(txData, (uint256));
     }
@@ -120,9 +90,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
      * @param header BlockHeader
      * @return bytes32 block header hash in little endian
      */
-    function computeBlockHeaderHash(
-        BlockHeader memory header
-    ) public pure returns (bytes32) {
+    function computeBlockHeaderHash(BlockHeader memory header) public pure returns (bytes32) {
         // Pack the header fields in little-endian
         bytes memory packed = abi.encodePacked(
             BTCStyleMerkle.reverseBytes4(header.version),
@@ -142,9 +110,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
      * @param hashes Array of transaction hashes (32-byte each).
      * @return merkleRoot The computed Merkle Root.
      */
-    function computeMerkleRoot(
-        bytes32[] memory hashes
-    ) public pure returns (bytes32) {
+    function computeMerkleRoot(bytes32[] memory hashes) public pure returns (bytes32) {
         return BTCStyleMerkle.computeMerkleRoot(hashes);
     }
 }

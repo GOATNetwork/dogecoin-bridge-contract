@@ -27,29 +27,17 @@ interface IDogechain {
         bytes32 rootHash;
     }
 
-    event BatchSubmitted(
-        uint256 batchId,
-        uint256 startBlock,
-        uint256 totalElements,
-        bytes32 rootHash
-    );
+    event BatchSubmitted(uint256 batchId, uint256 startBlock, uint256 totalElements, bytes32 rootHash);
     event AdminAdded(address indexed admin);
     event AdminRemoved(address indexed admin);
 
     function admins(address account) external view returns (bool);
 
-    function validateTransaction(
-        uint256 batchId,
-        SPVProof memory proof
-    ) external view returns (bool);
+    function validateTransaction(uint256 batchId, SPVProof memory proof) external view returns (bool);
 
     function extractAmount(bytes memory txData) external pure returns (uint256);
 
-    function submitBatch(
-        uint256 startBlock,
-        uint256 totalElements,
-        bytes32 rootHash
-    ) external;
+    function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external;
 
     function getBatch(uint256 batchId) external view returns (Batch memory);
 
@@ -57,12 +45,7 @@ interface IDogechain {
 
     function removeAdmin(address admin) external;
 
-    function computeBlockHeaderHash(
-        BlockHeader memory header
-    ) external pure returns (bytes32);
+    function computeBlockHeaderHash(BlockHeader memory header) external pure returns (bytes32);
 
-    function computeMerkleRoot(
-        bytes32[] memory hashes
-    ) external pure returns (bytes32);
-
+    function computeMerkleRoot(bytes32[] memory hashes) external pure returns (bytes32);
 }
