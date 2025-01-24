@@ -28,7 +28,7 @@ contract DogecoinBridgeTest is Test {
         dogechain.initialize();
 
         bridge = new DogecoinBridge();
-        bridge.initialize(address(dogeToken), address(dogechain), 10); // Fee rate: 0.1%
+        bridge.initialize(address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
 
         // Set bridge address in DogeToken
         dogeToken.setBridge(address(bridge));
@@ -119,7 +119,9 @@ contract DogecoinBridgeTest is Test {
             }),
             blockMerkleProof: blockMerkleProof,
             blockIndex: 1,
-            amount: 100
+            destEvmAddress: address(admin),
+            amount: 100,
+            txBytes: new bytes(0)
         });
 
         bool blockProofValidation = BTCStyleMerkle.verifyMerkleProof(
@@ -183,7 +185,7 @@ contract DogecoinBridgeTest is Test {
 
         vm.startPrank(user);
         dogeToken.approve(address(bridge), 1000);
-        bridge.bridgeOut(500, "destination-address");
+        bridge.bridgeOut(500, bytes20("destination-address"));
         vm.stopPrank();
 
         vm.startPrank(admin);
@@ -212,17 +214,20 @@ contract DogecoinBridgeTest is Test {
             }),
             blockMerkleProof: blockMerkleProof,
             blockIndex: 1,
-            amount: 100
+            destEvmAddress: address(admin),
+            amount: 100,
+            txBytes: new bytes(0)
         });
 
         uint256[] memory taskIds = new uint256[](1);
         taskIds[0] = 0;
 
-        bridge.bridgeOutFinish(0, proofs, taskIds);
-        (address from, uint256 destAmount, bool completed) = bridge.bridgeOutTasks(0);
+        bridge.bridgeOutFinish(0, proofs[0], taskIds);
+        (address from, uint256 destAmount, bytes20 destDogecoinAddress, bool completed) = bridge.bridgeOutTasks(0);
         assertTrue(completed);
         assertEq(from, user);
         assertEq(destAmount, 500);
+        assertEq(destDogecoinAddress, bytes20("destination-address"));
         assertEq(dogeToken.balanceOf(address(bridge)), 0); // Tokens burned
         vm.stopPrank();
     }

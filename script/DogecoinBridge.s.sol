@@ -22,7 +22,7 @@ contract DogecoinBridgeScript is Script {
 
         // Deploy DogecoinBridge
         DogecoinBridge bridge = new DogecoinBridge();
-        bridge.initialize(address(dogeToken), address(dogechain), 10); // Fee rate: 0.1%
+        bridge.initialize(address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
 
         // Configure DogeToken bridge address
         dogeToken.setBridge(address(bridge));

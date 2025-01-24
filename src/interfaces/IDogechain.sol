@@ -8,8 +8,10 @@ interface IDogechain {
         uint256 txIndex;
         bytes32[] blockMerkleProof;
         uint256 blockIndex;
-        uint256 amount; // use to bridge-in
+        address destEvmAddress;
+        uint256 amount; // use to bridge-in amount check
         BlockHeader blockHeader;
+        bytes txBytes; // use to bridge-in tx data check
     }
 
     struct BlockHeader {
@@ -35,7 +37,7 @@ interface IDogechain {
 
     function validateTransaction(uint256 batchId, SPVProof memory proof) external view returns (bool);
 
-    function extractAmount(bytes memory txData) external pure returns (uint256);
+    // function extractBridgeInTransaction(bytes memory txData) external pure returns (uint256, address, bytes20);
 
     function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external;
 
