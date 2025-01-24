@@ -34,12 +34,18 @@ contract DogecoinBridge is UUPSUpgradeable, OwnableUpgradeable {
      * @param fee The fee for the bridge out
      * @param destDogecoinAddress The destination address (Dogechain address)
      */
-    event BridgeOutProposed(uint256 taskId, address indexed from, uint256 destAmount, uint256 fee, bytes20 destDogecoinAddress);
+    event BridgeOutProposed(
+        uint256 taskId, address indexed from, uint256 destAmount, uint256 fee, bytes20 destDogecoinAddress
+    );
     event BridgeOutFinished(uint256[] taskIds);
     event FeesWithdrawn(address indexed owner, uint256 amount);
     event FeeRateUpdated(address indexed owner, uint256 feeRate);
     event DogecoinBridgePKUpdated(address indexed owner, bytes20 dogecoinBridgePK);
-    function initialize(address _dogeToken, address _dogechain, uint256 _feeRate, bytes20 _dogecoinBridgePK) external initializer {
+
+    function initialize(address _dogeToken, address _dogechain, uint256 _feeRate, bytes20 _dogecoinBridgePK)
+        external
+        initializer
+    {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
         dogeToken = IDogeToken(_dogeToken);
@@ -97,7 +103,12 @@ contract DogecoinBridge is UUPSUpgradeable, OwnableUpgradeable {
         dogeToken.transferFrom(msg.sender, address(this), amount);
 
         uint256 taskId = latestTaskId++;
-        bridgeOutTasks[taskId] = BridgeOutTask({from: msg.sender, destAmount: destAmount, destDogecoinAddress: destDogecoinAddress, completed: false});
+        bridgeOutTasks[taskId] = BridgeOutTask({
+            from: msg.sender,
+            destAmount: destAmount,
+            destDogecoinAddress: destDogecoinAddress,
+            completed: false
+        });
 
         // add fee to balance
         feeBalance += fee;
