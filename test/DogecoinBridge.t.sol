@@ -2,46 +2,57 @@
 pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+
 import {Dogechain} from "../src/Dogechain.sol";
 import {DogeToken} from "../src/DogeToken.sol";
 import {IDogechain} from "../src/interfaces/IDogechain.sol";
 import {DogecoinBridge} from "../src/DogecoinBridge.sol";
+import {EntryPointUpgradeable, IEntryPoint} from "../src/EntryPointUpgradeable.sol";
 import {BTCStyleMerkle} from "../src/libraries/BTCStyleMerkle.sol";
 
 contract DogecoinBridgeTest is Test {
+    using MessageHashUtils for bytes32;
+
     DogeToken public dogeToken;
     Dogechain public dogechain;
     DogecoinBridge public bridge;
+    EntryPointUpgradeable public entryPoint;
 
     address public owner = address(1);
-    address public admin = address(2);
+    address public proposer = address(2);
     address public user = address(3);
+    address public tssSigner;
+
+    uint256 public tssKey;
 
     function setUp() public {
         vm.startPrank(owner);
+        (tssSigner, tssKey) = makeAddrAndKey("tss");
 
         // Deploy and initialize contracts
+        entryPoint = new EntryPointUpgradeable();
+        address[] memory proposers = new address[](1);
+        proposers[0] = proposer;
+        entryPoint.initialize(tssSigner, proposers);
+
         dogeToken = new DogeToken();
         dogeToken.initialize();
 
         dogechain = new Dogechain();
-        dogechain.initialize();
+        dogechain.initialize(address(entryPoint));
 
         bridge = new DogecoinBridge();
-        bridge.initialize(address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
+        bridge.initialize(address(entryPoint), address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
 
         // Set bridge address in DogeToken
         dogeToken.setBridge(address(bridge));
-
-        // Add admin to Dogechain
-        dogechain.addAdmin(admin);
 
         vm.stopPrank();
     }
 
     function testInitializeContracts() public view {
         assertEq(dogeToken.bridge(), address(bridge));
-        assertTrue(dogechain.admins(admin));
     }
 
     function testComputeDogechainBlockMerkleRoot() public pure {
@@ -78,7 +89,7 @@ contract DogecoinBridgeTest is Test {
     }
 
     function testBridgeIn() public {
-        vm.startPrank(admin);
+        vm.startPrank(address(entryPoint));
 
         bytes32[] memory blockHashes = new bytes32[](3);
         blockHashes[0] =
@@ -119,7 +130,7 @@ contract DogecoinBridgeTest is Test {
             }),
             blockMerkleProof: blockMerkleProof,
             blockIndex: 1,
-            destEvmAddress: address(admin),
+            destEvmAddress: address(proposer),
             amount: 100,
             txBytes: new bytes(0)
         });
@@ -135,7 +146,7 @@ contract DogecoinBridgeTest is Test {
         // Bridge in tokens
         bridge.bridgeIn(proofs, 0);
 
-        assertEq(dogeToken.balanceOf(admin), 100);
+        assertEq(dogeToken.balanceOf(proposer), 100);
         vm.stopPrank();
     }
 
@@ -158,8 +169,8 @@ contract DogecoinBridgeTest is Test {
     }
 
     function testBridgeOutFinish() public {
-        vm.startPrank(admin);
-        // Create a batch by admin
+        vm.startPrank(address(entryPoint));
+        // Create a batch by proposer
         bytes32[] memory blockHashes = new bytes32[](3);
         blockHashes[0] =
             BTCStyleMerkle.reverseBytes32(0x0bbfc4b2d3b8e4e3e66d3a4dae6338c0d7a9ae26040575be1f15254ad602d40c);
@@ -188,7 +199,7 @@ contract DogecoinBridgeTest is Test {
         bridge.bridgeOut(500, bytes20("destination-address"));
         vm.stopPrank();
 
-        vm.startPrank(admin);
+        vm.startPrank(address(entryPoint));
 
         bytes32[] memory txHashes = new bytes32[](5);
         txHashes[0] = BTCStyleMerkle.reverseBytes32(0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f);
@@ -198,7 +209,7 @@ contract DogecoinBridgeTest is Test {
         txHashes[4] = BTCStyleMerkle.reverseBytes32(0xc9f32925b55fa915023a02ab6967765a665493b0b13fc33209a60312500d019a);
         (bytes32[] memory txMerkleProof,) = BTCStyleMerkle.generateMerkleProof(txHashes, 0);
 
-        // Complete the bridge out by admin
+        // Complete the bridge out by proposer
         IDogechain.SPVProof[] memory proofs = new IDogechain.SPVProof[](1);
         proofs[0] = IDogechain.SPVProof({
             txHash: BTCStyleMerkle.reverseBytes32(0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f),
@@ -214,7 +225,7 @@ contract DogecoinBridgeTest is Test {
             }),
             blockMerkleProof: blockMerkleProof,
             blockIndex: 1,
-            destEvmAddress: address(admin),
+            destEvmAddress: address(proposer),
             amount: 100,
             txBytes: new bytes(0)
         });
@@ -230,5 +241,39 @@ contract DogecoinBridgeTest is Test {
         assertEq(destDogecoinAddress, bytes20("destination-address"));
         assertEq(dogeToken.balanceOf(address(bridge)), 0); // Tokens burned
         vm.stopPrank();
+    }
+
+    function testCallFromEntryPoint() public {
+        bytes32[] memory blockHashes = new bytes32[](3);
+        blockHashes[0] =
+            BTCStyleMerkle.reverseBytes32(0x0bbfc4b2d3b8e4e3e66d3a4dae6338c0d7a9ae26040575be1f15254ad602d40c);
+        blockHashes[1] =
+            BTCStyleMerkle.reverseBytes32(0xfb4cc1df87acfe4bd5998d885c664edcd949ac8d2f24affa9a2bfe9f7d3945a5);
+        blockHashes[2] =
+            BTCStyleMerkle.reverseBytes32(0x71d6f54a64ffa8f148a0b2449ccefa5d76637e943d2fd898364ef4b414a19a58);
+        (, bytes32 blockHashMerkleRoot) = BTCStyleMerkle.generateMerkleProof(blockHashes, 1);
+
+        bytes32 computedRoot = BTCStyleMerkle.computeMerkleRoot(blockHashes);
+        assertEq(computedRoot, blockHashMerkleRoot);
+
+        bytes memory callData = abi.encodeWithSelector(dogechain.submitBatch.selector, 5556717, 3, blockHashMerkleRoot);
+        bytes memory encodedData = abi.encode(callData, entryPoint.tssNonce(), block.chainid);
+        bytes32 digest = keccak256(encodedData).toEthSignedMessageHash();
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(1, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // Fail: not proposer
+        vm.expectRevert(abi.encodeWithSelector(IEntryPoint.IncorrectSubmitter.selector, address(this), proposer));
+        entryPoint.verifyAndCall(address(dogechain), callData, signature);
+
+        // Fail: incorrect signature
+        vm.startPrank(proposer);
+        vm.expectRevert("Invalid Signer");
+        entryPoint.verifyAndCall(address(dogechain), callData, signature);
+
+        // Success
+        (v, r, s) = vm.sign(tssKey, digest);
+        signature = abi.encodePacked(r, s, v);
+        entryPoint.verifyAndCall(address(dogechain), callData, signature);
     }
 }

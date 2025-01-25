@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {DogecoinBridge} from "../src/DogecoinBridge.sol";
 import {Dogechain} from "../src/Dogechain.sol";
 import {DogeToken} from "../src/DogeToken.sol";
+import {EntryPointUpgradeable} from "../src/EntryPointUpgradeable.sol";
 
 contract DogecoinBridgeScript is Script {
     function setUp() public {}
@@ -12,17 +13,21 @@ contract DogecoinBridgeScript is Script {
     function run() public {
         vm.startBroadcast();
 
+        // Deploy EntryPoint
+        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable();
+        // Note: EntryPoint is left un-initialized
+
         // Deploy DogeToken
         DogeToken dogeToken = new DogeToken();
         dogeToken.initialize();
 
         // Deploy Dogechain
         Dogechain dogechain = new Dogechain();
-        dogechain.initialize();
+        dogechain.initialize(address(entryPoint));
 
         // Deploy DogecoinBridge
         DogecoinBridge bridge = new DogecoinBridge();
-        bridge.initialize(address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
+        bridge.initialize(address(entryPoint), address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
 
         // Configure DogeToken bridge address
         dogeToken.setBridge(address(bridge));
