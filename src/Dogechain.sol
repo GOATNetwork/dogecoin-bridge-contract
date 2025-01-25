@@ -80,10 +80,11 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
         return true;
     }
 
-    function extractAmount(bytes memory txData) external pure override returns (uint256) {
-        // Mock implementation
-        return abi.decode(txData, (uint256));
-    }
+    // function extractBridgeInTransaction(bytes memory txData) external pure override returns (uint256, address, bytes20) {
+    //     // TODO: dogecoin tx data parse implementation
+    //     // dogecoin 8 decimal to 18 decimal here
+    //     return (0, address(0), bytes20(0));
+    // }
 
     /**
      * @dev compute block header hash
