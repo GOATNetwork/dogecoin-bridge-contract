@@ -10,10 +10,9 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
     mapping(uint256 => Batch) public batches;
     uint256 public latestBatchId;
 
-    function initialize() external initializer {
-        __Ownable_init(msg.sender);
+    function initialize(address _entryPoint) external initializer {
+        __Ownable_init(_entryPoint);
         __UUPSUpgradeable_init();
-        emit AdminAdded(msg.sender);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
