@@ -10,36 +10,15 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
     mapping(uint256 => Batch) public batches;
     uint256 public latestBatchId;
 
-    mapping(address => bool) public admins;
-
     function initialize() external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
-        admins[msg.sender] = true;
         emit AdminAdded(msg.sender);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
-    modifier onlyAdmin() {
-        require(admins[msg.sender], "Caller is not an admin");
-        _;
-    }
-
-    function addAdmin(address admin) external override onlyOwner {
-        require(admin != address(0), "Invalid admin address");
-        require(!admins[admin], "Address is already an admin");
-        admins[admin] = true;
-        emit AdminAdded(admin);
-    }
-
-    function removeAdmin(address admin) external override onlyOwner {
-        require(admins[admin], "Address is not an admin");
-        admins[admin] = false;
-        emit AdminRemoved(admin);
-    }
-
-    function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external override onlyAdmin {
+    function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external override onlyOwner {
         if (latestBatchId > 0) {
             Batch memory previousBatch = batches[latestBatchId - 1];
             require(startBlock == previousBatch.startBlock + previousBatch.totalElements, "Invalid startBlock");
