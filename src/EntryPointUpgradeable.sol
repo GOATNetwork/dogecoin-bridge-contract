@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
@@ -9,7 +9,11 @@ import {IEntryPoint} from "./interfaces/IEntryPoint.sol";
 /**
  * @dev Manage all onchain information.
  */
-contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpgradeable {
+contract EntryPointUpgradeable is
+    IEntryPoint,
+    Initializable,
+    ReentrancyGuardUpgradeable
+{
     uint256 public constant FORCE_ROTATION_WINDOW = 1 minutes;
     uint256 public constant MIN_PARTICIPANT_COUNT = 3;
 
@@ -22,7 +26,10 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
     address public nextSubmitter;
 
     modifier onlyCurrentSubmitter() {
-        require(msg.sender == nextSubmitter, IncorrectSubmitter(msg.sender, nextSubmitter));
+        require(
+            msg.sender == nextSubmitter,
+            IncorrectSubmitter(msg.sender, nextSubmitter)
+        );
         _;
         _rotateSubmitter();
     }
@@ -31,7 +38,10 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @dev Initializes the contract.
      * @param _tssSigner The address of tssSigner.
      */
-    function initialize(address _tssSigner, address[] calldata _initialProposers) public initializer {
+    function initialize(
+        address _tssSigner,
+        address[] calldata _initialProposers
+    ) public initializer {
         __ReentrancyGuard_init();
 
         require(_tssSigner != address(0), "Invalid Address");
@@ -45,8 +55,23 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
         emit SubmitterChosen(nextSubmitter);
     }
 
-    function setProposers(address[] calldata _newProposers) external onlyCurrentSubmitter {
-        require(_newProposers.length > MIN_PARTICIPANT_COUNT, "Not Enough Proposers");
+    function setProposers(
+        address[] calldata _newProposers,
+        bytes calldata _signature
+    ) external onlyCurrentSubmitter {
+        require(
+            _newProposers.length > MIN_PARTICIPANT_COUNT,
+            "Not Enough Proposers"
+        );
+        require(
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_newProposers, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
+            "Invalid Signer"
+        );
         // Reset existing proposers
         for (uint256 i; i < proposers.length; ++i) {
             isProposer[proposers[i]] = false;
@@ -64,10 +89,18 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @param _newSigner The new tssSigner address.
      * @param _signature The signature for verification.
      */
-    function setSignerAddress(address _newSigner, bytes calldata _signature) external onlyCurrentSubmitter {
+    function setSignerAddress(
+        address _newSigner,
+        bytes calldata _signature
+    ) external onlyCurrentSubmitter {
         require(_newSigner != address(0), "Invalid Address");
         require(
-            _verifySignature(keccak256(abi.encodePacked(_newSigner, tssNonce++, block.chainid)), _signature),
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_newSigner, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
             "Invalid Signer"
         );
 
@@ -79,14 +112,29 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @dev Pick new random submitter if the current submitter is inactive for too long.
      * @param _signature The signature for verification.
      */
-    function chooseNewSubmitter(uint256 _uncompletedTaskCount, bytes calldata _signature) external nonReentrant {
+    function chooseNewSubmitter(
+        uint256 _uncompletedTaskCount,
+        bytes calldata _signature
+    ) external nonReentrant {
         require(isProposer[msg.sender], "Not Proposer");
         require(
             block.timestamp >= lastSubmissionTime + FORCE_ROTATION_WINDOW,
-            RotationWindowNotPassed(block.timestamp, lastSubmissionTime + FORCE_ROTATION_WINDOW)
+            RotationWindowNotPassed(
+                block.timestamp,
+                lastSubmissionTime + FORCE_ROTATION_WINDOW
+            )
         );
         require(
-            _verifySignature(keccak256(abi.encodePacked(_uncompletedTaskCount, tssNonce++, block.chainid)), _signature),
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(
+                        _uncompletedTaskCount,
+                        tssNonce++,
+                        block.chainid
+                    )
+                ),
+                _signature
+            ),
             "Invalid Signer"
         );
         emit SubmitterRotationRequested(msg.sender, nextSubmitter);
@@ -99,15 +147,21 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @param _calldata The calldata of the function to be called.
      * @param _signature The signature for verification.
      */
-    function verifyAndCall(address _target, bytes calldata _calldata, bytes calldata _signature)
-        external
-        onlyCurrentSubmitter
-        nonReentrant
-    {
+    function verifyAndCall(
+        address _target,
+        bytes calldata _calldata,
+        bytes calldata _signature
+    ) external onlyCurrentSubmitter nonReentrant {
         require(
-            _verifySignature(keccak256(abi.encode(_calldata, tssNonce++, block.chainid)), _signature), "Invalid Signer"
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_calldata, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
+            "Invalid Signer"
         );
-        (bool success,) = _target.call(_calldata);
+        (bool success, ) = _target.call(_calldata);
         require(success, "Call Failed");
     }
 
@@ -116,8 +170,13 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @param _hash The hashed message.
      * @param _signature The signature for verification.
      */
-    function _verifySignature(bytes32 _hash, bytes calldata _signature) internal view returns (bool) {
-        bytes32 messageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _hash));
+    function _verifySignature(
+        bytes32 _hash,
+        bytes calldata _signature
+    ) internal view returns (bool) {
+        bytes32 messageHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", _hash)
+        );
         (bytes32 r, bytes32 s, uint8 v) = _splitSignature(_signature);
         address recoverAddr = ecrecover(messageHash, v, r, s);
         return tssSigner == recoverAddr;
@@ -149,7 +208,9 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
     /**
      * @dev Get rsv from signature.
      */
-    function _splitSignature(bytes memory sig) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+    function _splitSignature(
+        bytes memory sig
+    ) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
         require(sig.length == 65, "Invalid signature length");
 
         assembly {

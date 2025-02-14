@@ -28,7 +28,11 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     IDogechain public dogechain;
     bytes20 public dogecoinBridgePK; // dogecoin bridge-in public key hash
 
-    event BridgeIn(address indexed destEvmAddress, uint256 amount, bytes32 txHash);
+    event BridgeIn(
+        address indexed destEvmAddress,
+        uint256 amount,
+        bytes32 txHash
+    );
     /**
      * @dev Bridge out event
      * @param taskId The task ID
@@ -38,12 +42,19 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
      * @param destDogecoinAddress The destination address (Dogechain address)
      */
     event BridgeOutProposed(
-        uint256 taskId, address indexed from, uint256 destAmount, uint256 fee, bytes20 destDogecoinAddress
+        uint256 taskId,
+        address indexed from,
+        uint256 destAmount,
+        uint256 fee,
+        bytes20 destDogecoinAddress
     );
     event BridgeOutFinished(uint256[] taskIds);
     event FeesWithdrawn(address indexed owner, uint256 amount);
     event FeeRateUpdated(address indexed owner, uint256 feeRate);
-    event DogecoinBridgePKUpdated(address indexed owner, bytes20 dogecoinBridgePK);
+    event DogecoinBridgePKUpdated(
+        address indexed owner,
+        bytes20 dogecoinBridgePK
+    );
 
     function initialize(
         address _entryPoint,
@@ -66,18 +77,32 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         emit DogecoinBridgePKUpdated(msg.sender, _dogecoinBridgePK);
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(OWNER_ROLE) {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyRole(OWNER_ROLE) {}
 
-    function bridgeIn(IDogechain.SPVProof[] memory proofs, uint256 batchId) external onlyRole(ENTRYPOINT_ROLE) {
+    function bridgeIn(
+        IDogechain.SPVProof[] memory proofs,
+        uint256 batchId
+    ) external onlyRole(ENTRYPOINT_ROLE) {
         IDogechain.Batch memory batch = dogechain.getBatch(batchId);
         require(batch.rootHash != bytes32(0), "Invalid batch");
 
         uint256 totalAmount = 0;
         for (uint256 i = 0; i < proofs.length; i++) {
             require(proofs[i].txHash != bytes32(0), "Invalid txHash");
-            require(proofs[i].destEvmAddress != address(0), "Invalid destEvmAddress");
-            require(bridgeInTxids[proofs[i].txHash] == false, "txHash already processed");
-            require(dogechain.validateTransaction(batchId, proofs[i]), "Invalid SPV proof");
+            require(
+                proofs[i].destEvmAddress != address(0),
+                "Invalid destEvmAddress"
+            );
+            require(
+                bridgeInTxids[proofs[i].txHash] == false,
+                "txHash already processed"
+            );
+            require(
+                dogechain.validateTransaction(batchId, proofs[i]),
+                "Invalid SPV proof"
+            );
 
             // TODO: check doublehash(proofs[i].txBytes) with proofs[i].txHash
 
@@ -91,23 +116,36 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
             dogeToken.mint(proofs[i].destEvmAddress, proofs[i].amount);
             totalAmount += proofs[i].amount;
             bridgeInTxids[proofs[i].txHash] = true;
-            emit BridgeIn(proofs[i].destEvmAddress, proofs[i].amount, proofs[i].txHash);
+            emit BridgeIn(
+                proofs[i].destEvmAddress,
+                proofs[i].amount,
+                proofs[i].txHash
+            );
         }
 
         // TODO: recheck the unit test
         bridgedInAmount += totalAmount;
     }
 
-    function bridgeOut(uint256 amount, bytes20 destDogecoinAddress) external payable {
+    function bridgeOut(
+        uint256 amount,
+        bytes20 destDogecoinAddress
+    ) external payable {
         require(amount > 0, "Amount must be greater than 0");
-        require(destDogecoinAddress != bytes20(0), "Invalid destination address");
+        require(
+            destDogecoinAddress != bytes20(0),
+            "Invalid destination address"
+        );
 
         uint256 fee = (amount * feeRate) / 10000;
         require(amount > fee, "Amount must be greater than fee");
         // TODO: convert destAmount to 8 decimals
         uint256 destAmount = amount - fee;
 
-        require(dogeToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
+        require(
+            dogeToken.balanceOf(msg.sender) >= amount,
+            "Insufficient balance"
+        );
         dogeToken.transferFrom(msg.sender, address(this), amount);
 
         uint256 taskId = latestTaskId++;
@@ -121,7 +159,13 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         // add fee to balance
         feeBalance += fee;
 
-        emit BridgeOutProposed(taskId, msg.sender, destAmount, fee, destDogecoinAddress);
+        emit BridgeOutProposed(
+            taskId,
+            msg.sender,
+            destAmount,
+            fee,
+            destDogecoinAddress
+        );
     }
 
     /**
@@ -130,13 +174,17 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
      * @param proof The SPV proof, one txid deals many bridge out tasks
      * @param taskIds The task IDs
      */
-    function bridgeOutFinish(uint256 batchId, IDogechain.SPVProof memory proof, uint256[] memory taskIds)
-        external
-        onlyRole(ENTRYPOINT_ROLE)
-    {
+    function bridgeOutFinish(
+        uint256 batchId,
+        IDogechain.SPVProof memory proof,
+        uint256[] memory taskIds
+    ) external onlyRole(ENTRYPOINT_ROLE) {
         require(proof.txHash != bytes32(0), "Invalid txHash");
         require(taskIds.length > 0, "Invalid taskIds");
-        require(dogechain.validateTransaction(batchId, proof), "Invalid SPV proof");
+        require(
+            dogechain.validateTransaction(batchId, proof),
+            "Invalid SPV proof"
+        );
 
         // TODO: check doublehash(proof.txBytes) with proof.txHash
 
@@ -167,7 +215,9 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         emit FeeRateUpdated(msg.sender, _feeRate);
     }
 
-    function setDogecoinBridgePK(bytes20 _dogecoinBridgePK) external onlyRole(OWNER_ROLE) {
+    function setDogecoinBridgePK(
+        bytes20 _dogecoinBridgePK
+    ) external onlyRole(OWNER_ROLE) {
         dogecoinBridgePK = _dogecoinBridgePK;
         emit DogecoinBridgePKUpdated(msg.sender, _dogecoinBridgePK);
     }
