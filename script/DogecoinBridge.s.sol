@@ -5,6 +5,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {DogecoinBridge} from "../src/DogecoinBridge.sol";
 import {Dogechain} from "../src/Dogechain.sol";
 import {DogeToken} from "../src/DogeToken.sol";
+import {DogeTransactionParser} from "../src/libraries/DogeTransactionParser.sol";
 
 contract DogecoinBridgeScript is Script {
     function setUp() public {}
@@ -22,7 +23,14 @@ contract DogecoinBridgeScript is Script {
 
         // Deploy DogecoinBridge
         DogecoinBridge bridge = new DogecoinBridge();
-        bridge.initialize(address(dogeToken), address(dogechain), 10, bytes20(0)); // Fee rate: 0.1%
+        bridge.initialize(
+            address(dogeToken),
+            address(dogechain),
+            10,
+            bytes20(0),
+            bytes4(0x47514556),
+            DogeTransactionParser.Network.MAINNET
+        ); // Fee rate: 0.1%
 
         // Configure DogeToken bridge address
         dogeToken.setBridge(address(bridge));
