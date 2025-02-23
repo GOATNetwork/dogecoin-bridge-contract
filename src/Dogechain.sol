@@ -59,7 +59,12 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
         return batches[batchId];
     }
 
-    function validateTransaction(uint256 batchId, SPVProof memory proof) public view override returns (bool) {
+    function validateTransaction(uint256 batchId, bytes32 txid, SPVProof memory proof)
+        public
+        view
+        override
+        returns (bool)
+    {
         Batch memory batch = batches[batchId];
         require(batch.rootHash != bytes32(0), "Batch does not exist");
 
@@ -71,9 +76,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
         );
 
         require(
-            BTCStyleMerkle.verifyMerkleProof(
-                proof.blockHeader.merkleRoot, proof.txMerkleProof, proof.txHash, proof.txIndex
-            ),
+            BTCStyleMerkle.verifyMerkleProof(proof.blockHeader.merkleRoot, proof.txMerkleProof, txid, proof.txIndex),
             "Invalid transaction proof"
         );
 
