@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 interface IDogechain {
     struct SPVProof {
-        bytes32 txHash; // little endian
+        // bytes32 txHash; // little endian
         bytes32[] txMerkleProof;
         uint256 txIndex;
         bytes32[] blockMerkleProof;
@@ -31,7 +31,7 @@ interface IDogechain {
 
     event BatchSubmitted(uint256 batchId, uint256 startBlock, uint256 totalElements, bytes32 rootHash);
 
-    function validateTransaction(uint256 batchId, SPVProof memory proof) external view returns (bool);
+    function validateTransaction(uint256 batchId, bytes32 txid, SPVProof memory proof) external view returns (bool);
 
     // function extractBridgeInTransaction(bytes memory txData) external pure returns (uint256, address, bytes20);
 

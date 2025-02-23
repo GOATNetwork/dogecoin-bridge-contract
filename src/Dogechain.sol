@@ -58,6 +58,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
 
     function validateTransaction(
         uint256 batchId,
+        bytes32 txid,
         SPVProof memory proof
     ) public view override returns (bool) {
         Batch memory batch = batches[batchId];
@@ -77,7 +78,7 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
             BTCStyleMerkle.verifyMerkleProof(
                 proof.blockHeader.merkleRoot,
                 proof.txMerkleProof,
-                proof.txHash,
+                txid,
                 proof.txIndex
             ),
             "Invalid transaction proof"

@@ -10,6 +10,7 @@ import {IDogechain} from "../src/interfaces/IDogechain.sol";
 import {DogecoinBridge} from "../src/DogecoinBridge.sol";
 import {EntryPointUpgradeable, IEntryPoint} from "../src/EntryPointUpgradeable.sol";
 import {BTCStyleMerkle} from "../src/libraries/BTCStyleMerkle.sol";
+import {DogeTransactionParser} from "../src/libraries/DogeTransactionParser.sol";
 
 import {MockToken} from "../src/mocks/MockToken.sol";
 
@@ -51,7 +52,9 @@ contract DogecoinBridgeTest is Test {
             address(dogeToken),
             address(dogechain),
             10,
-            bytes20(0)
+            bytes20(0),
+            bytes4(0x47514556),
+            DogeTransactionParser.Network.MAINNET
         ); // Fee rate: 0.1%
 
         // Set bridge address in DogeToken
@@ -117,6 +120,98 @@ contract DogecoinBridgeTest is Test {
         );
     }
 
+    function testGetTxid() public pure {
+        bytes
+            memory txData = hex"0200000001bb6b4a499069ba4094d04f41a5bbaa8861838deff0a2f484da7469f6ed98a8ff000000006a47304402201ce3feea47bd407c3f24474f0e25cfd42bfc4b10f33443536da2d72c5fd4dc0a02201c583e8fc190bd7beb157fcb7ab46ca82fef10bbc5060ecfc57f760e26170d7a01210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000";
+        bytes32 txid = DogeTransactionParser.getTxid(txData);
+        assertEq(
+            txid,
+            BTCStyleMerkle.reverseBytes32(
+                0x87255de9393c93ded6b5d659f6761c2b8f7c0467789ff2f41e129d1f569a583b
+            )
+        );
+    }
+
+    function testParseBridgeInP2PKHTxOfRegtest() public pure {
+        bytes
+            memory txData = hex"0200000001bb6b4a499069ba4094d04f41a5bbaa8861838deff0a2f484da7469f6ed98a8ff000000006a47304402201ce3feea47bd407c3f24474f0e25cfd42bfc4b10f33443536da2d72c5fd4dc0a02201c583e8fc190bd7beb157fcb7ab46ca82fef10bbc5060ecfc57f760e26170d7a01210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000";
+        (
+            DogeTransactionParser.P2PKHOutput memory p2pkhOutput,
+            bytes memory opReturnData,
+            bool isP2PKHWithOpReturn
+        ) = DogeTransactionParser.parseBridgeInP2PKHTransaction(txData);
+        string memory expectedAddress = DogeTransactionParser.encodeBase58(
+            DogeTransactionParser.getDogecoinAddress(
+                p2pkhOutput.publicKeyHash,
+                DogeTransactionParser.Network.REGTEST,
+                0
+            )
+        );
+        string memory actualAddress = "mg2dbz8VTPUiNWa5uA1QNqYAsR2hcChq4i";
+        assertTrue(isP2PKHWithOpReturn);
+        assertEq(p2pkhOutput.value, 99900000);
+        assertEq(bytes(expectedAddress).length, bytes(actualAddress).length);
+        assertEq(expectedAddress, actualAddress);
+        assertTrue(opReturnData.length == 24);
+        bytes4 magicPrefix = bytes4(opReturnData);
+        assertEq(magicPrefix, bytes4("GTV1"));
+        bytes memory slicedData = new bytes(20);
+        for (uint256 i = 4; i < 24; i++) {
+            slicedData[i - 4] = opReturnData[i];
+        }
+        address destAddress = address(uint160(bytes20(slicedData)));
+        assertEq(
+            destAddress,
+            address(
+                uint160(bytes20(hex"9e2516fffaaf9a3fb7d92868fa2d4bc452163a14"))
+            )
+        );
+    }
+
+    function testParseBridgeOutP2PKHTxOfRegtest() public pure {
+        bytes
+            memory txData = hex"0200000001bb6b4a499069ba4094d04f41a5bbaa8861838deff0a2f484da7469f6ed98a8ff000000006a47304402201ce3feea47bd407c3f24474f0e25cfd42bfc4b10f33443536da2d72c5fd4dc0a02201c583e8fc190bd7beb157fcb7ab46ca82fef10bbc5060ecfc57f760e26170d7a01210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000";
+        (
+            DogeTransactionParser.P2PKHOutput[] memory allOutputs,
+            uint8 p2pkhOutputCount
+        ) = DogeTransactionParser.parseBridgeOutP2PKHTransaction(txData);
+        assertEq(allOutputs.length, 2);
+        assertEq(p2pkhOutputCount, 1);
+        assertEq(allOutputs[0].value, 99900000);
+        string memory expectedAddress = DogeTransactionParser.encodeBase58(
+            DogeTransactionParser.getDogecoinAddress(
+                allOutputs[0].publicKeyHash,
+                DogeTransactionParser.Network.REGTEST,
+                0
+            )
+        );
+        string memory actualAddress = "mg2dbz8VTPUiNWa5uA1QNqYAsR2hcChq4i";
+        assertEq(bytes(expectedAddress).length, bytes(actualAddress).length);
+        assertEq(expectedAddress, actualAddress);
+    }
+
+    function testParseBridgeOutP2PKHTxOfMainnet() public pure {
+        bytes
+            memory txData = hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000";
+        (
+            DogeTransactionParser.P2PKHOutput[] memory allOutputs,
+            uint8 p2pkhOutputCount
+        ) = DogeTransactionParser.parseBridgeOutP2PKHTransaction(txData);
+        assertEq(allOutputs.length, 1);
+        assertEq(p2pkhOutputCount, 1);
+        assertEq(allOutputs[0].value, 1000442500000);
+        string memory expectedAddress = DogeTransactionParser.encodeBase58(
+            DogeTransactionParser.getDogecoinAddress(
+                allOutputs[0].publicKeyHash,
+                DogeTransactionParser.Network.MAINNET,
+                0
+            )
+        );
+        string memory actualAddress = "DBgHW1Shjyk91fusm9hm3HcryNBwaFwZbQ";
+        assertEq(bytes(expectedAddress).length, bytes(actualAddress).length);
+        assertEq(expectedAddress, actualAddress);
+    }
+
     function testBridgeIn() public {
         vm.startPrank(address(entryPoint));
 
@@ -164,9 +259,7 @@ contract DogecoinBridgeTest is Test {
 
         IDogechain.SPVProof[] memory proofs = new IDogechain.SPVProof[](1);
         proofs[0] = IDogechain.SPVProof({
-            txHash: BTCStyleMerkle.reverseBytes32(
-                0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f
-            ),
+            // txHash: BTCStyleMerkle.reverseBytes32(0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f),
             txMerkleProof: txMerkleProof,
             txIndex: 0,
             blockHeader: IDogechain.BlockHeader({
@@ -185,7 +278,7 @@ contract DogecoinBridgeTest is Test {
             blockIndex: 1,
             destEvmAddress: address(proposer),
             amount: 100,
-            txBytes: new bytes(0)
+            txBytes: hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000"
         });
 
         bool blockProofValidation = BTCStyleMerkle.verifyMerkleProof(
@@ -285,9 +378,7 @@ contract DogecoinBridgeTest is Test {
         // Complete the bridge out by proposer
         IDogechain.SPVProof[] memory proofs = new IDogechain.SPVProof[](1);
         proofs[0] = IDogechain.SPVProof({
-            txHash: BTCStyleMerkle.reverseBytes32(
-                0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f
-            ),
+            // txHash: BTCStyleMerkle.reverseBytes32(0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f),
             txMerkleProof: txMerkleProof,
             txIndex: 0,
             blockHeader: IDogechain.BlockHeader({
@@ -306,7 +397,7 @@ contract DogecoinBridgeTest is Test {
             blockIndex: 1,
             destEvmAddress: address(proposer),
             amount: 100,
-            txBytes: new bytes(0)
+            txBytes: hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000"
         });
 
         uint256[] memory taskIds = new uint256[](1);
@@ -317,9 +408,9 @@ contract DogecoinBridgeTest is Test {
             address from,
             uint256 destAmount,
             bytes20 destDogecoinAddress,
-            bool completed
+            uint8 status
         ) = bridge.bridgeOutTasks(0);
-        assertTrue(completed);
+        assertEq(status, 5);
         assertEq(from, user);
         assertEq(destAmount, 500);
         assertEq(destDogecoinAddress, bytes20("destination-address"));
