@@ -30,10 +30,6 @@ interface IDogechain {
     }
 
     event BatchSubmitted(uint256 batchId, uint256 startBlock, uint256 totalElements, bytes32 rootHash);
-    event AdminAdded(address indexed admin);
-    event AdminRemoved(address indexed admin);
-
-    function admins(address account) external view returns (bool);
 
     function validateTransaction(uint256 batchId, bytes32 txid, SPVProof memory proof) external view returns (bool);
 
@@ -42,10 +38,6 @@ interface IDogechain {
     function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external;
 
     function getBatch(uint256 batchId) external view returns (Batch memory);
-
-    function addAdmin(address admin) external;
-
-    function removeAdmin(address admin) external;
 
     function computeBlockHeaderHash(BlockHeader memory header) external pure returns (bytes32);
 

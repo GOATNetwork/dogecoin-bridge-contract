@@ -1,62 +1,117 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IEntryPoint} from "./interfaces/IEntryPoint.sol";
 
 /**
  * @dev Manage all onchain information.
  */
-contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpgradeable {
+contract EntryPointUpgradeable is
+    IEntryPoint,
+    Initializable,
+    ReentrancyGuardUpgradeable
+{
     uint256 public constant FORCE_ROTATION_WINDOW = 1 minutes;
     uint256 public constant MIN_PARTICIPANT_COUNT = 3;
+    address public immutable stakeToken;
 
     uint256 public lastSubmissionTime;
     uint256 public tssNonce;
     address public tssSigner;
 
-    address[] public participants;
-    mapping(address => bool) public isParticipant;
+    address[] public proposers;
     address public nextSubmitter;
+    mapping(address => bool) public isProposer;
 
-    modifier onlyCurrentSubmitter() {
-        require(msg.sender == nextSubmitter, IncorrectSubmitter(msg.sender, nextSubmitter));
+    uint256 public stakeThreshold;
+    mapping(address => uint256) public stakedAmounts;
+
+    modifier checkSumitter() {
+        require(
+            msg.sender == nextSubmitter,
+            IncorrectSubmitter(msg.sender, nextSubmitter)
+        );
+        require(
+            stakedAmounts[msg.sender] >= stakeThreshold,
+            "Submitter has no staked amount"
+        );
         _;
         _rotateSubmitter();
+    }
+
+    constructor(address _stakeToken) {
+        stakeToken = _stakeToken;
     }
 
     /**
      * @dev Initializes the contract.
      * @param _tssSigner The address of tssSigner.
      */
-    function initialize(address _tssSigner, address[] calldata _initialParticipants) public initializer {
+    function initialize(
+        address _tssSigner,
+        address[] calldata _initialProposers
+    ) public initializer {
         __ReentrancyGuard_init();
 
-        require(_tssSigner != address(0), InvalidAddress());
+        require(_tssSigner != address(0), "Invalid Address");
         tssSigner = _tssSigner;
         lastSubmissionTime = block.timestamp;
-        participants = _initialParticipants;
-        for (uint256 i; i < _initialParticipants.length; ++i) {
-            isParticipant[_initialParticipants[i]] = true;
+        proposers = _initialProposers;
+        for (uint256 i; i < _initialProposers.length; ++i) {
+            isProposer[_initialProposers[i]] = true;
         }
-        nextSubmitter = _getRandomParticipant(nextSubmitter);
+        nextSubmitter = _getRandomProposer(nextSubmitter);
         emit SubmitterChosen(nextSubmitter);
     }
 
-    function setParticipants(address[] calldata _newParticipants) external onlyCurrentSubmitter {
-        require(_newParticipants.length > MIN_PARTICIPANT_COUNT, "Not Enough Participants");
-        // Reset existing participants
-        for (uint256 i; i < participants.length; ++i) {
-            isParticipant[participants[i]] = false;
+    function stake(uint256 _amount) external {
+        require(_amount > 0, "Invalid Amount");
+        IERC20(stakeToken).transferFrom(msg.sender, address(this), _amount);
+        stakedAmounts[msg.sender] += _amount;
+        emit Stake(msg.sender, _amount);
+    }
+
+    function unstake(uint256 _amount) external {
+        require(
+            stakedAmounts[msg.sender] >= _amount,
+            "Insufficient Staked Amount"
+        );
+        stakedAmounts[msg.sender] -= _amount;
+        IERC20(stakeToken).transfer(msg.sender, _amount);
+        emit Unstake(msg.sender, _amount);
+    }
+
+    function setProposers(
+        address[] calldata _newProposers,
+        bytes calldata _signature
+    ) external checkSumitter {
+        require(
+            _newProposers.length > MIN_PARTICIPANT_COUNT,
+            "Not Enough Proposers"
+        );
+        require(
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_newProposers, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
+            "Invalid Signer"
+        );
+        // Reset existing proposers
+        for (uint256 i; i < proposers.length; ++i) {
+            isProposer[proposers[i]] = false;
         }
-        // add new participants
-        participants = _newParticipants;
-        for (uint256 i; i < _newParticipants.length; ++i) {
-            isParticipant[_newParticipants[i]] = true;
+        // add new proposers
+        proposers = _newProposers;
+        for (uint256 i; i < _newProposers.length; ++i) {
+            isProposer[_newProposers[i]] = true;
         }
-        emit SetParticipant(_newParticipants);
+        emit SetProposer(_newProposers);
     }
 
     /**
@@ -64,10 +119,18 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @param _newSigner The new tssSigner address.
      * @param _signature The signature for verification.
      */
-    function setSignerAddress(address _newSigner, bytes calldata _signature) external onlyCurrentSubmitter {
-        require(_newSigner != address(0), InvalidAddress());
+    function setSignerAddress(
+        address _newSigner,
+        bytes calldata _signature
+    ) external checkSumitter {
+        require(_newSigner != address(0), "Invalid Address");
         require(
-            _verifySignature(keccak256(abi.encodePacked(_newSigner, tssNonce++, block.chainid)), _signature),
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_newSigner, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
             "Invalid Signer"
         );
 
@@ -79,14 +142,29 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @dev Pick new random submitter if the current submitter is inactive for too long.
      * @param _signature The signature for verification.
      */
-    function chooseNewSubmitter(uint256 _uncompletedTaskCount, bytes calldata _signature) external nonReentrant {
-        require(isParticipant[msg.sender], "Not Participant");
+    function chooseNewSubmitter(
+        uint256 _uncompletedTaskCount,
+        bytes calldata _signature
+    ) external nonReentrant {
+        require(isProposer[msg.sender], "Not Proposer");
         require(
             block.timestamp >= lastSubmissionTime + FORCE_ROTATION_WINDOW,
-            RotationWindowNotPassed(block.timestamp, lastSubmissionTime + FORCE_ROTATION_WINDOW)
+            RotationWindowNotPassed(
+                block.timestamp,
+                lastSubmissionTime + FORCE_ROTATION_WINDOW
+            )
         );
         require(
-            _verifySignature(keccak256(abi.encodePacked(_uncompletedTaskCount, tssNonce++, block.chainid)), _signature),
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(
+                        _uncompletedTaskCount,
+                        tssNonce++,
+                        block.chainid
+                    )
+                ),
+                _signature
+            ),
             "Invalid Signer"
         );
         emit SubmitterRotationRequested(msg.sender, nextSubmitter);
@@ -99,15 +177,21 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @param _calldata The calldata of the function to be called.
      * @param _signature The signature for verification.
      */
-    function verifyAndCall(address _target, bytes calldata _calldata, bytes calldata _signature)
-        external
-        onlyCurrentSubmitter
-        nonReentrant
-    {
+    function verifyAndCall(
+        address _target,
+        bytes calldata _calldata,
+        bytes calldata _signature
+    ) external checkSumitter nonReentrant {
         require(
-            _verifySignature(keccak256(abi.encode(_calldata, tssNonce++, block.chainid)), _signature), "Invalid Signer"
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_calldata, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
+            "Invalid Signer"
         );
-        (bool success,) = _target.call(_calldata);
+        (bool success, ) = _target.call(_calldata);
         require(success, "Call Failed");
     }
 
@@ -116,23 +200,28 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
      * @param _hash The hashed message.
      * @param _signature The signature for verification.
      */
-    function _verifySignature(bytes32 _hash, bytes calldata _signature) internal view returns (bool) {
-        bytes32 messageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _hash));
+    function _verifySignature(
+        bytes32 _hash,
+        bytes calldata _signature
+    ) internal view returns (bool) {
+        bytes32 messageHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", _hash)
+        );
         (bytes32 r, bytes32 s, uint8 v) = _splitSignature(_signature);
         address recoverAddr = ecrecover(messageHash, v, r, s);
         return tssSigner == recoverAddr;
     }
 
     /**
-     * @dev Pick a new random submiter from the participant list.
+     * @dev Pick a new random submiter from the proposer list.
      */
     function _rotateSubmitter() internal {
         lastSubmissionTime = block.timestamp;
-        nextSubmitter = _getRandomParticipant(nextSubmitter);
+        nextSubmitter = _getRandomProposer(nextSubmitter);
         emit SubmitterChosen(nextSubmitter);
     }
 
-    function _getRandomParticipant(address _salt) internal view returns (address) {
+    function _getRandomProposer(address _salt) internal view returns (address) {
         uint256 randomIndex = uint256(
             keccak256(
                 abi.encodePacked(
@@ -142,14 +231,16 @@ contract EntryPointUpgradeable is IEntryPoint, Initializable, ReentrancyGuardUpg
                     _salt
                 )
             )
-        ) % participants.length;
-        return participants[randomIndex];
+        ) % proposers.length;
+        return proposers[randomIndex];
     }
 
     /**
      * @dev Get rsv from signature.
      */
-    function _splitSignature(bytes memory sig) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+    function _splitSignature(
+        bytes memory sig
+    ) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
         require(sig.length == 65, "Invalid signature length");
 
         assembly {
