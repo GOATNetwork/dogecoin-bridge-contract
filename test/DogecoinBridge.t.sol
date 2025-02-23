@@ -11,6 +11,8 @@ import {DogecoinBridge} from "../src/DogecoinBridge.sol";
 import {EntryPointUpgradeable, IEntryPoint} from "../src/EntryPointUpgradeable.sol";
 import {BTCStyleMerkle} from "../src/libraries/BTCStyleMerkle.sol";
 
+import {MockToken} from "../src/mocks/MockToken.sol";
+
 contract DogecoinBridgeTest is Test {
     using MessageHashUtils for bytes32;
 
@@ -27,11 +29,13 @@ contract DogecoinBridgeTest is Test {
     uint256 public tssKey;
 
     function setUp() public {
-        vm.startPrank(owner);
         (tssSigner, tssKey) = makeAddrAndKey("tss");
 
         // Deploy and initialize contracts
-        entryPoint = new EntryPointUpgradeable();
+        MockToken mockToken = new MockToken();
+
+        vm.startPrank(owner);
+        entryPoint = new EntryPointUpgradeable(address(mockToken));
         address[] memory proposers = new address[](1);
         proposers[0] = proposer;
         entryPoint.initialize(tssSigner, proposers);
@@ -376,5 +380,9 @@ contract DogecoinBridgeTest is Test {
         (v, r, s) = vm.sign(tssKey, digest);
         signature = abi.encodePacked(r, s, v);
         entryPoint.verifyAndCall(address(dogechain), callData, signature);
+    }
+
+    function test_Stake() public {
+        // TODO: ...
     }
 }

@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IEntryPoint} from "./interfaces/IEntryPoint.sol";
 
@@ -16,22 +17,34 @@ contract EntryPointUpgradeable is
 {
     uint256 public constant FORCE_ROTATION_WINDOW = 1 minutes;
     uint256 public constant MIN_PARTICIPANT_COUNT = 3;
+    address public immutable stakeToken;
 
     uint256 public lastSubmissionTime;
     uint256 public tssNonce;
     address public tssSigner;
 
     address[] public proposers;
-    mapping(address => bool) public isProposer;
     address public nextSubmitter;
+    mapping(address => bool) public isProposer;
 
-    modifier onlyCurrentSubmitter() {
+    uint256 public stakeThreshold;
+    mapping(address => uint256) public stakedAmounts;
+
+    modifier checkSumitter() {
         require(
             msg.sender == nextSubmitter,
             IncorrectSubmitter(msg.sender, nextSubmitter)
         );
+        require(
+            stakedAmounts[msg.sender] >= stakeThreshold,
+            "Submitter has no staked amount"
+        );
         _;
         _rotateSubmitter();
+    }
+
+    constructor(address _stakeToken) {
+        stakeToken = _stakeToken;
     }
 
     /**
@@ -55,10 +68,27 @@ contract EntryPointUpgradeable is
         emit SubmitterChosen(nextSubmitter);
     }
 
+    function stake(uint256 _amount) external {
+        require(_amount > 0, "Invalid Amount");
+        IERC20(stakeToken).transferFrom(msg.sender, address(this), _amount);
+        stakedAmounts[msg.sender] += _amount;
+        emit Stake(msg.sender, _amount);
+    }
+
+    function unstake(uint256 _amount) external {
+        require(
+            stakedAmounts[msg.sender] >= _amount,
+            "Insufficient Staked Amount"
+        );
+        stakedAmounts[msg.sender] -= _amount;
+        IERC20(stakeToken).transfer(msg.sender, _amount);
+        emit Unstake(msg.sender, _amount);
+    }
+
     function setProposers(
         address[] calldata _newProposers,
         bytes calldata _signature
-    ) external onlyCurrentSubmitter {
+    ) external checkSumitter {
         require(
             _newProposers.length > MIN_PARTICIPANT_COUNT,
             "Not Enough Proposers"
@@ -92,7 +122,7 @@ contract EntryPointUpgradeable is
     function setSignerAddress(
         address _newSigner,
         bytes calldata _signature
-    ) external onlyCurrentSubmitter {
+    ) external checkSumitter {
         require(_newSigner != address(0), "Invalid Address");
         require(
             _verifySignature(
@@ -151,7 +181,7 @@ contract EntryPointUpgradeable is
         address _target,
         bytes calldata _calldata,
         bytes calldata _signature
-    ) external onlyCurrentSubmitter nonReentrant {
+    ) external checkSumitter nonReentrant {
         require(
             _verifySignature(
                 keccak256(
