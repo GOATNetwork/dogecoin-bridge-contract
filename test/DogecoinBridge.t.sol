@@ -37,7 +37,6 @@ contract DogecoinBridgeTest is Test {
         entryPoint.initialize(tssSigner, proposers);
 
         dogeToken = new DogeToken();
-        dogeToken.initialize();
 
         dogechain = new Dogechain();
         dogechain.initialize(address(entryPoint));

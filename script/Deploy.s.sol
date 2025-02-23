@@ -23,7 +23,6 @@ contract DogecoinBridgeScript is Script {
 
         // Deploy DogeToken
         DogeToken dogeToken = new DogeToken();
-        dogeToken.initialize();
 
         // Deploy Dogechain
         Dogechain dogechain = new Dogechain();
