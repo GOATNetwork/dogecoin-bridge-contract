@@ -33,8 +33,6 @@ interface IDogechain {
 
     function validateTransaction(uint256 batchId, bytes32 txid, SPVProof memory proof) external view returns (bool);
 
-    // function extractBridgeInTransaction(bytes memory txData) external pure returns (uint256, address, bytes20);
-
     function submitBatch(uint256 startBlock, uint256 totalElements, bytes32 rootHash) external;
 
     function getBatch(uint256 batchId) external view returns (Batch memory);

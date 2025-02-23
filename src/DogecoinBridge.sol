@@ -109,22 +109,29 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
                 "Invalid SPV proof"
             );
 
-            // TODO: check doublehash(proofs[i].txBytes) with proofs[i].txHash
-            // TODO: check opReturnMagicPrefix with proofs[i].txBytes
-            // TODO: extract amount, destEvmAddress from proofs[i].txBytes
-            // (uint256 amount, address destEvmAddress, bytes20 dogecoinAddress) = dogechain.extractBridgeInTransaction(proofs[i].txBytes);
+            // check opReturnMagicPrefix, p2pkhOutput, amount, destEvmAddress from proofs[i].txBytes
+            DogeTransactionParser.P2PKHOutput memory p2pkhOutput;
+            bytes memory opReturnData;
+            bool isP2PKHWithOpReturn;
+            (p2pkhOutput, opReturnData, isP2PKHWithOpReturn) = DogeTransactionParser.parseBridgeInP2PKHTransaction(proofs[i].txBytes);
+            require(isP2PKHWithOpReturn, "Invalid transaction");
+            require(p2pkhOutput.publicKeyHash == dogecoinBridgePK, "Invalid dogecoin bridge address");
+            require(p2pkhOutput.value == proofs[i].amount, "Invalid amount");
+            require(opReturnData.length == 24 && bytes4(opReturnData) == opReturnMagicPrefix, "Invalid OP_RETURN data");
 
-            // TODO enable this after real dogecoin bridge-in transaction is implemented
-            // require(amount == proofs[i].amount, "Invalid amount");
-            // require(destEvmAddress == proofs[i].destEvmAddress, "Invalid destination address");
-            // require(dogecoinAddress == dogecoinBridgeAddress, "Invalid dogecoin bridge address");
-            dogeToken.mint(proofs[i].destEvmAddress, proofs[i].amount);
+            bytes memory slicedData = new bytes(20);
+            for (uint256 j = 4; j < 24; j++) {
+                slicedData[j - 4] = opReturnData[j];
+            }
+            address destAddress = address(uint160(bytes20(slicedData)));
+            require(destAddress == proofs[i].destEvmAddress, "Invalid destination address");
+
+            dogeToken.mint(destAddress, proofs[i].amount);
             totalAmount += proofs[i].amount;
             bridgeInTxids[txid] = true;
-            emit BridgeIn(proofs[i].destEvmAddress, proofs[i].amount, txid);
+            emit BridgeIn(destAddress, proofs[i].amount, txid);
         }
 
-        // TODO: recheck the unit test
         bridgedInAmount += totalAmount;
     }
 

@@ -52,8 +52,8 @@ contract DogecoinBridgeTest is Test {
             address(dogeToken),
             address(dogechain),
             10,
-            bytes20(0),
-            bytes4(0x47514556),
+            hex"059ce0647de86cf966dfa4656a08530eb8f26772",
+            bytes4("GTV1"),
             DogeTransactionParser.Network.MAINNET
         ); // Fee rate: 0.1%
 
@@ -212,18 +212,24 @@ contract DogecoinBridgeTest is Test {
         assertEq(expectedAddress, actualAddress);
     }
 
+    /**
+     * @notice This test is not working, because the block hash is not correct
+     */
     function testBridgeIn() public {
         vm.startPrank(address(entryPoint));
 
         bytes32[] memory blockHashes = new bytes32[](3);
+        // block 125 in regtest
         blockHashes[0] = BTCStyleMerkle.reverseBytes32(
-            0x0bbfc4b2d3b8e4e3e66d3a4dae6338c0d7a9ae26040575be1f15254ad602d40c
+            0x841ca96a59778c0d30e9a1cb70cb3329402de0ae1633e7c029cdd9874280a12c
         );
+        // 126
         blockHashes[1] = BTCStyleMerkle.reverseBytes32(
-            0xfb4cc1df87acfe4bd5998d885c664edcd949ac8d2f24affa9a2bfe9f7d3945a5
+            0x7689cc2cf531ca0d04ed4bf94348f87650a4a3385b4ff82de35416a809154887
         );
+        // 127
         blockHashes[2] = BTCStyleMerkle.reverseBytes32(
-            0x71d6f54a64ffa8f148a0b2449ccefa5d76637e943d2fd898364ef4b414a19a58
+            0xf3feb36a650888afc7006dfee0e30516e1564e301d49f773b853b1930d27b5df
         );
         (
             bytes32[] memory blockMerkleProof,
@@ -233,59 +239,55 @@ contract DogecoinBridgeTest is Test {
         bytes32 computedRoot = BTCStyleMerkle.computeMerkleRoot(blockHashes);
         assertEq(computedRoot, blockHashMerkleRoot);
 
-        // Create a batch and SPV proof
-        dogechain.submitBatch(5556717, 3, blockHashMerkleRoot);
+        // create a batch and SPV proof, submit it
+        dogechain.submitBatch(125, 3, blockHashMerkleRoot);
 
-        bytes32[] memory txHashes = new bytes32[](5);
+        // block 126 txs in regtest
+        bytes32[] memory txHashes = new bytes32[](2);
         txHashes[0] = BTCStyleMerkle.reverseBytes32(
-            0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f
+            0x83f05c4d03c03acb6b97f87b226f0540db01636843beed8e52f5a9f124e9e5b4
         );
         txHashes[1] = BTCStyleMerkle.reverseBytes32(
-            0x459d296c42514f5afc51473766733c7d5a5250035eeeaaee827dd603a8cc7ecf
+            0x683f58fdfaf5558c43bd2f3d0c6716237e6d6f0e25eeadbf03ef4cc179e10fd1
         );
-        txHashes[2] = BTCStyleMerkle.reverseBytes32(
-            0x6bbd9c94b705c84cb268b653c942d968e2a55ce761886f6b70de296d008e975f
-        );
-        txHashes[3] = BTCStyleMerkle.reverseBytes32(
-            0x9033cc33e386b433d60099da2b24b12c15dcfeed35729740b761b0bbcdd884ca
-        );
-        txHashes[4] = BTCStyleMerkle.reverseBytes32(
-            0xc9f32925b55fa915023a02ab6967765a665493b0b13fc33209a60312500d019a
-        );
+        // generate deposit TX merkle proof in a block
         (bytes32[] memory txMerkleProof, ) = BTCStyleMerkle.generateMerkleProof(
             txHashes,
-            0
+            1
         );
+
+        // this needs to extract from the OP_RETURN data at client side, contract side will verify it
+        address destAddress = address(uint160(bytes20(hex"9e2516fffaaf9a3fb7d92868fa2d4bc452163a14")));
 
         IDogechain.SPVProof[] memory proofs = new IDogechain.SPVProof[](1);
         proofs[0] = IDogechain.SPVProof({
-            // txHash: BTCStyleMerkle.reverseBytes32(0x6f35b9e9cff6e788b6fb9e4a707a972081fe3a28369bca9e4319b10a4751e68f),
             txMerkleProof: txMerkleProof,
-            txIndex: 0,
+            txIndex: 1,
             blockHeader: IDogechain.BlockHeader({
-                version: 6422788,
+                version: 6422532,
                 prevBlock: BTCStyleMerkle.reverseBytes32(
-                    0x0bbfc4b2d3b8e4e3e66d3a4dae6338c0d7a9ae26040575be1f15254ad602d40c
+                    0x841ca96a59778c0d30e9a1cb70cb3329402de0ae1633e7c029cdd9874280a12c
                 ),
                 merkleRoot: BTCStyleMerkle.reverseBytes32(
-                    0xa2f10e9e2dc6dede16d9775395dc015572c4e3a128e6aebe7bc9780f754d296a
+                    0x0436c23211cbedc9c5b1cedccab9dbcfb2a965ad8b0cc93b06901188f20afa84
                 ),
-                timestamp: 1737618144,
-                bits: 0x197c63d0,
-                nonce: 0x0000000000000000000000000000000000000000000000000000000000000000
+                timestamp: 1740295218,
+                bits: 0x207fffff,
+                nonce: 1
             }),
             blockMerkleProof: blockMerkleProof,
             blockIndex: 1,
-            destEvmAddress: address(proposer),
-            amount: 100,
-            txBytes: hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000"
+            destEvmAddress: destAddress,
+            amount: 99900000,
+            txBytes: hex"02000000011615c449a5b2f572e5c3693e89c9c4be0bf021a68c68359b725537aa58376a7a010000006b4830450221009d46ea44468ca4600219d4e0dc949e14d92740bb3efeed5dad42d45c9a78ae6d02201bfc5d1f7b2b111ef5d022fc6c4e3b6a3f5ed296d23e3081595e50d6e8dd52e501210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000"
         });
 
+        // verify the block proof at client side, before do bridge-in
         bool blockProofValidation = BTCStyleMerkle.verifyMerkleProof(
             blockHashMerkleRoot,
             blockMerkleProof,
             BTCStyleMerkle.reverseBytes32(
-                0xfb4cc1df87acfe4bd5998d885c664edcd949ac8d2f24affa9a2bfe9f7d3945a5
+                0x7689cc2cf531ca0d04ed4bf94348f87650a4a3385b4ff82de35416a809154887
             ),
             1
         );
@@ -294,7 +296,7 @@ contract DogecoinBridgeTest is Test {
         // Bridge in tokens
         bridge.bridgeIn(proofs, 0);
 
-        assertEq(dogeToken.balanceOf(proposer), 100);
+        assertEq(dogeToken.balanceOf(destAddress), 99900000);
         vm.stopPrank();
     }
 
