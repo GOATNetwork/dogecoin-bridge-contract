@@ -66,22 +66,22 @@ contract Dogechain is IDogechain, UUPSUpgradeable, OwnableUpgradeable {
 
         require(
             BTCStyleMerkle.verifyMerkleProof(
-                batch.rootHash,
-                proof.blockMerkleProof,
-                computeBlockHeaderHash(proof.blockHeader),
-                proof.blockIndex
-            ),
-            "Invalid block proof"
-        );
-
-        require(
-            BTCStyleMerkle.verifyMerkleProof(
                 proof.blockHeader.merkleRoot,
                 proof.txMerkleProof,
                 txid,
                 proof.txIndex
             ),
             "Invalid transaction proof"
+        );
+
+        require(
+            BTCStyleMerkle.verifyMerkleProof(
+                batch.rootHash,
+                proof.blockMerkleProof,
+                computeBlockHeaderHash(proof.blockHeader),
+                proof.blockIndex
+            ),
+            "Invalid block proof"
         );
 
         return true;
