@@ -257,7 +257,9 @@ contract DogecoinBridgeTest is Test {
         );
 
         // this needs to extract from the OP_RETURN data at client side, contract side will verify it
-        address destAddress = address(uint160(bytes20(hex"9e2516fffaaf9a3fb7d92868fa2d4bc452163a14")));
+        address destAddress = address(
+            uint160(bytes20(hex"9e2516fffaaf9a3fb7d92868fa2d4bc452163a14"))
+        );
 
         IDogechain.SPVProof[] memory proofs = new IDogechain.SPVProof[](1);
         proofs[0] = IDogechain.SPVProof({
@@ -439,14 +441,18 @@ contract DogecoinBridgeTest is Test {
         bytes32 computedRoot = BTCStyleMerkle.computeMerkleRoot(blockHashes);
         assertEq(computedRoot, blockHashMerkleRoot);
 
-        bytes memory callData = abi.encodeWithSelector(
+        address[] memory targets = new address[](1);
+        targets[0] = address(dogechain);
+        bytes[] memory callDatas = new bytes[](1);
+        callDatas[0] = abi.encodeWithSelector(
             dogechain.submitBatch.selector,
             5556717,
             3,
             blockHashMerkleRoot
         );
-        bytes memory encodedData = abi.encodePacked(
-            callData,
+        bytes memory encodedData = abi.encode(
+            targets,
+            callDatas,
             entryPoint.tssNonce(),
             block.chainid
         );
@@ -462,17 +468,17 @@ contract DogecoinBridgeTest is Test {
                 proposer
             )
         );
-        entryPoint.verifyAndCall(address(dogechain), callData, signature);
+        entryPoint.verifyAndCall(targets, callDatas, signature);
 
         // Fail: incorrect signature
         vm.startPrank(proposer);
         vm.expectRevert("Invalid Signer");
-        entryPoint.verifyAndCall(address(dogechain), callData, signature);
+        entryPoint.verifyAndCall(targets, callDatas, signature);
 
         // Success
         (v, r, s) = vm.sign(tssKey, digest);
         signature = abi.encodePacked(r, s, v);
-        entryPoint.verifyAndCall(address(dogechain), callData, signature);
+        entryPoint.verifyAndCall(targets, callDatas, signature);
     }
 
     function test_Stake() public {

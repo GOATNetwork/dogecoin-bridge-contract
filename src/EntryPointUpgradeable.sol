@@ -173,26 +173,33 @@ contract EntryPointUpgradeable is
 
     /**
      * @dev Entry point for all task handlers
-     * @param _target The contract address to be called.
+     * @param _targets The contract address to be called.
      * @param _calldata The calldata of the function to be called.
      * @param _signature The signature for verification.
      */
     function verifyAndCall(
-        address _target,
-        bytes calldata _calldata,
+        address[] calldata _targets,
+        bytes[] calldata _calldata,
         bytes calldata _signature
-    ) external checkSumitter nonReentrant {
+    ) external checkSumitter nonReentrant returns (bool[] memory res) {
+        require(
+            _targets.length == _calldata.length,
+            "Targets and Calldata Length Mismatch"
+        );
         require(
             _verifySignature(
                 keccak256(
-                    abi.encodePacked(_calldata, tssNonce++, block.chainid)
+                    abi.encode(_targets, _calldata, tssNonce++, block.chainid)
                 ),
                 _signature
             ),
             "Invalid Signer"
         );
-        (bool success, ) = _target.call(_calldata);
-        require(success, "Call Failed");
+        res = new bool[](_targets.length);
+        for (uint256 i = 0; i < _targets.length; ++i) {
+            (res[i], ) = _targets[i].call(_calldata[i]);
+        }
+        return res;
     }
 
     /**
