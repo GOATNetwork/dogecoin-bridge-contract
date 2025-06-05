@@ -223,6 +223,9 @@ contract EntryPointUpgradeable is
      * @dev Pick a new random submiter from the proposer list.
      */
     function _rotateSubmitter() internal {
+        if (lastSubmissionTime + FORCE_ROTATION_WINDOW > block.timestamp) {
+            return;
+        }
         lastSubmissionTime = block.timestamp;
         nextSubmitter = _getRandomProposer(nextSubmitter);
         emit SubmitterChosen(nextSubmitter);
