@@ -2,6 +2,12 @@
 pragma solidity ^0.8.13;
 
 interface IDogechain {
+    struct BridgeTransaction {
+        address destEvmAddress;
+        uint256 amount; // dogecoin 8 decimal to 18 decimal
+        bytes txBytes; // use to bridge-in tx data check
+    }
+
     struct SPVProof {
         // bytes32 txHash; // little endian
         bytes32[] txMerkleProof;

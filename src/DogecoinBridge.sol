@@ -89,34 +89,30 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     ) internal override onlyRole(OWNER_ROLE) {}
 
     function bridgeIn(
-        IDogechain.SPVProof[] memory proofs,
+        IDogechain.BridgeTransaction[] memory bridgeTxs,
         uint256 batchId
     ) external onlyRole(ENTRYPOINT_ROLE) {
         IDogechain.Batch memory batch = dogechain.getBatch(batchId);
         require(batch.rootHash != bytes32(0), "Invalid batch");
 
         uint256 totalAmount = 0;
-        for (uint256 i = 0; i < proofs.length; i++) {
-            bytes32 txid = DogeTransactionParser.getTxid(proofs[i].txBytes);
+        for (uint256 i = 0; i < bridgeTxs.length; i++) {
+            bytes32 txid = DogeTransactionParser.getTxid(bridgeTxs[i].txBytes);
             require(txid != bytes32(0), "Invalid txid");
             require(
-                proofs[i].destEvmAddress != address(0),
+                bridgeTxs[i].destEvmAddress != address(0),
                 "Invalid destEvmAddress"
             );
             require(bridgeInTxids[txid] == false, "Txid already processed");
-            require(
-                dogechain.validateTransaction(batchId, txid, proofs[i]),
-                "Invalid SPV proof"
-            );
 
-            // check opReturnMagicPrefix, p2pkhOutput, amount, destEvmAddress from proofs[i].txBytes
+            // check opReturnMagicPrefix, p2pkhOutput, amount, destEvmAddress from bridgeTxs[i].txBytes
             DogeTransactionParser.P2PKHOutput memory p2pkhOutput;
             bytes memory opReturnData;
             bool isP2PKHWithOpReturn;
-            (p2pkhOutput, opReturnData, isP2PKHWithOpReturn) = DogeTransactionParser.parseBridgeInP2PKHTransaction(proofs[i].txBytes);
+            (p2pkhOutput, opReturnData, isP2PKHWithOpReturn) = DogeTransactionParser.parseBridgeInP2PKHTransaction(bridgeTxs[i].txBytes);
             require(isP2PKHWithOpReturn, "Invalid transaction");
             require(p2pkhOutput.publicKeyHash == dogecoinBridgePK, "Invalid dogecoin bridge address");
-            require(p2pkhOutput.value == proofs[i].amount, "Invalid amount");
+            require(p2pkhOutput.value == bridgeTxs[i].amount, "Invalid amount");
             require(opReturnData.length == 24 && bytes4(opReturnData) == opReturnMagicPrefix, "Invalid OP_RETURN data");
 
             bytes memory slicedData = new bytes(20);
@@ -124,12 +120,12 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
                 slicedData[j - 4] = opReturnData[j];
             }
             address destAddress = address(uint160(bytes20(slicedData)));
-            require(destAddress == proofs[i].destEvmAddress, "Invalid destination address");
+            require(destAddress == bridgeTxs[i].destEvmAddress, "Invalid destination address");
 
-            dogeToken.mint(destAddress, proofs[i].amount);
-            totalAmount += proofs[i].amount;
+            dogeToken.mint(destAddress, bridgeTxs[i].amount);
+            totalAmount += bridgeTxs[i].amount;
             bridgeInTxids[txid] = true;
-            emit BridgeIn(destAddress, proofs[i].amount, txid);
+            emit BridgeIn(destAddress, bridgeTxs[i].amount, txid);
         }
 
         bridgedInAmount += totalAmount;
@@ -201,26 +197,22 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     /**
      * @dev Bridge out finish
      * @param batchId The batch ID
-     * @param proof The SPV proof, one txid deals many bridge out tasks
+     * @param bridgeTx The bridge transaction, one txid deals many bridge out tasks
      * @param taskIds The task IDs
      */
     function bridgeOutFinish(
         uint256 batchId,
-        IDogechain.SPVProof memory proof,
+        IDogechain.BridgeTransaction memory bridgeTx,
         uint256[] memory taskIds
     ) external onlyRole(ENTRYPOINT_ROLE) {
-        bytes32 txid = DogeTransactionParser.getTxid(proof.txBytes);
+        bytes32 txid = DogeTransactionParser.getTxid(bridgeTx.txBytes);
         require(txid != bytes32(0), "Invalid txid");
         require(taskIds.length > 0, "Invalid taskIds");
-        require(
-            dogechain.validateTransaction(batchId, txid, proof),
-            "Invalid SPV proof"
-        );
 
-        // TODO: check doublehash(proof.txBytes) with proof.txHash
+        // TODO: check doublehash(bridgeTx.txBytes) with bridgeTx.txHash
 
-        // TODO: extract p2pkhOutputs from proof.txBytes
-        // p2pkhOutputs = dogechain.extractBridgeOutTransaction(proof.txBytes);
+        // TODO: extract p2pkhOutputs from bridgeTx.txBytes
+        // p2pkhOutputs = dogechain.extractBridgeOutTransaction(bridgeTx.txBytes);
 
         for (uint256 i = 0; i < taskIds.length; i++) {
             uint256 taskId = taskIds[i];

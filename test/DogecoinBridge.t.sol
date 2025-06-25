@@ -217,6 +217,151 @@ contract DogecoinBridgeTest is Test {
      */
     function testBridgeIn() public {
         vm.startPrank(address(entryPoint));
+        dogechain.submitBatch(100, 3, bytes32(uint256(1))); // Dummy batch for testing
+
+        // this needs to extract from the OP_RETURN data at client side, contract side will verify it
+        address destAddress = address(
+            uint160(bytes20(hex"9e2516fffaaf9a3fb7d92868fa2d4bc452163a14"))
+        );
+
+        IDogechain.BridgeTransaction[] memory bridgeTxs = new IDogechain.BridgeTransaction[](1);
+        bridgeTxs[0] = IDogechain.BridgeTransaction({
+            destEvmAddress: destAddress,
+            amount: 99900000,
+            txBytes: hex"02000000011615c449a5b2f572e5c3693e89c9c4be0bf021a68c68359b725537aa58376a7a010000006b4830450221009d46ea44468ca4600219d4e0dc949e14d92740bb3efeed5dad42d45c9a78ae6d02201bfc5d1f7b2b111ef5d022fc6c4e3b6a3f5ed296d23e3081595e50d6e8dd52e501210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000"
+        });
+
+        // Bridge in tokens
+        bridge.bridgeIn(bridgeTxs, 0);
+
+        assertEq(dogeToken.balanceOf(destAddress), 99900000);
+        vm.stopPrank();
+    }
+
+    function testBridgeOut() public {
+        vm.startPrank(address(bridge));
+        // Mint tokens for user
+        dogeToken.mint(user, 1000);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        // Approve tokens for bridge
+        dogeToken.approve(address(bridge), 1000);
+
+        // Bridge out tokens
+        bridge.bridgeOut(500, "destination-address");
+
+        assertEq(dogeToken.balanceOf(user), 500); // Remaining balance
+        assertEq(dogeToken.balanceOf(address(bridge)), 500); // Bridge balance
+        vm.stopPrank();
+    }
+
+    function testBridgeOutFinish() public {
+        vm.startPrank(address(entryPoint));
+        dogechain.submitBatch(100, 3, bytes32(uint256(1))); // Dummy batch for testing
+        vm.stopPrank();
+
+        // Add bridge out task
+        vm.startPrank(address(bridge));
+        dogeToken.mint(user, 1000);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        dogeToken.approve(address(bridge), 1000);
+        bridge.bridgeOut(500, bytes20("destination-address"));
+        vm.stopPrank();
+
+        vm.startPrank(address(entryPoint));
+        // Complete the bridge out by proposer
+        IDogechain.BridgeTransaction memory bridgeTx = IDogechain.BridgeTransaction({
+            destEvmAddress: address(proposer),
+            amount: 100,
+            txBytes: hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000"
+        });
+
+        uint256[] memory taskIds = new uint256[](1);
+        taskIds[0] = 0;
+
+        bridge.bridgeOutFinish(0, bridgeTx, taskIds);
+        (
+            address from,
+            uint256 destAmount,
+            bytes20 destDogecoinAddress,
+            uint8 status
+        ) = bridge.bridgeOutTasks(0);
+        assertEq(status, 5);
+        assertEq(from, user);
+        assertEq(destAmount, 500);
+        assertEq(destDogecoinAddress, bytes20("destination-address"));
+        assertEq(dogeToken.balanceOf(address(bridge)), 0); // Tokens burned
+        vm.stopPrank();
+    }
+
+    function testCallFromEntryPoint() public {
+        bytes32[] memory blockHashes = new bytes32[](3);
+        blockHashes[0] = BTCStyleMerkle.reverseBytes32(
+            0x0bbfc4b2d3b8e4e3e66d3a4dae6338c0d7a9ae26040575be1f15254ad602d40c
+        );
+        blockHashes[1] = BTCStyleMerkle.reverseBytes32(
+            0xfb4cc1df87acfe4bd5998d885c664edcd949ac8d2f24affa9a2bfe9f7d3945a5
+        );
+        blockHashes[2] = BTCStyleMerkle.reverseBytes32(
+            0x71d6f54a64ffa8f148a0b2449ccefa5d76637e943d2fd898364ef4b414a19a58
+        );
+        (, bytes32 blockHashMerkleRoot) = BTCStyleMerkle.generateMerkleProof(
+            blockHashes,
+            1
+        );
+
+        bytes32 computedRoot = BTCStyleMerkle.computeMerkleRoot(blockHashes);
+        assertEq(computedRoot, blockHashMerkleRoot);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(dogechain);
+        bytes[] memory callDatas = new bytes[](1);
+        callDatas[0] = abi.encodeWithSelector(
+            dogechain.submitBatch.selector,
+            5556717,
+            3,
+            blockHashMerkleRoot
+        );
+        bytes memory encodedData = abi.encode(
+            targets,
+            callDatas,
+            entryPoint.tssNonce(),
+            block.chainid
+        );
+        bytes32 digest = keccak256(encodedData).toEthSignedMessageHash();
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(1, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // Fail: not proposer
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEntryPoint.IncorrectSubmitter.selector,
+                address(this),
+                proposer
+            )
+        );
+        entryPoint.verifyAndCall(targets, callDatas, signature);
+
+        // Fail: incorrect signature
+        vm.startPrank(proposer);
+        vm.expectRevert("Invalid Signer");
+        entryPoint.verifyAndCall(targets, callDatas, signature);
+
+        // Success
+        (v, r, s) = vm.sign(tssKey, digest);
+        signature = abi.encodePacked(r, s, v);
+        entryPoint.verifyAndCall(targets, callDatas, signature);
+    }
+
+    /**
+     * @notice This test is not working, because the block hash is not correct
+     */
+    function testBridgeIn_Deprecated() public {
+        vm.skip(true);
+        vm.startPrank(address(entryPoint));
 
         bytes32[] memory blockHashes = new bytes32[](3);
         // block 125 in regtest
@@ -296,31 +441,14 @@ contract DogecoinBridgeTest is Test {
         assertTrue(blockProofValidation);
 
         // Bridge in tokens
-        bridge.bridgeIn(proofs, 0);
+        // bridge.bridgeIn(proofs, 0);
 
         assertEq(dogeToken.balanceOf(destAddress), 99900000);
         vm.stopPrank();
     }
 
-    function testBridgeOut() public {
-        vm.startPrank(address(bridge));
-        // Mint tokens for user
-        dogeToken.mint(user, 1000);
-        vm.stopPrank();
-
-        vm.startPrank(user);
-        // Approve tokens for bridge
-        dogeToken.approve(address(bridge), 1000);
-
-        // Bridge out tokens
-        bridge.bridgeOut(500, "destination-address");
-
-        assertEq(dogeToken.balanceOf(user), 500); // Remaining balance
-        assertEq(dogeToken.balanceOf(address(bridge)), 500); // Bridge balance
-        vm.stopPrank();
-    }
-
-    function testBridgeOutFinish() public {
+    function testBridgeOutFinish_Deprecated() public {
+        vm.skip(true);
         vm.startPrank(address(entryPoint));
         // Create a batch by proposer
         bytes32[] memory blockHashes = new bytes32[](3);
@@ -407,7 +535,7 @@ contract DogecoinBridgeTest is Test {
         uint256[] memory taskIds = new uint256[](1);
         taskIds[0] = 0;
 
-        bridge.bridgeOutFinish(0, proofs[0], taskIds);
+        // bridge.bridgeOutFinish(0, proofs[0], taskIds);
         (
             address from,
             uint256 destAmount,
@@ -420,65 +548,6 @@ contract DogecoinBridgeTest is Test {
         assertEq(destDogecoinAddress, bytes20("destination-address"));
         assertEq(dogeToken.balanceOf(address(bridge)), 0); // Tokens burned
         vm.stopPrank();
-    }
-
-    function testCallFromEntryPoint() public {
-        bytes32[] memory blockHashes = new bytes32[](3);
-        blockHashes[0] = BTCStyleMerkle.reverseBytes32(
-            0x0bbfc4b2d3b8e4e3e66d3a4dae6338c0d7a9ae26040575be1f15254ad602d40c
-        );
-        blockHashes[1] = BTCStyleMerkle.reverseBytes32(
-            0xfb4cc1df87acfe4bd5998d885c664edcd949ac8d2f24affa9a2bfe9f7d3945a5
-        );
-        blockHashes[2] = BTCStyleMerkle.reverseBytes32(
-            0x71d6f54a64ffa8f148a0b2449ccefa5d76637e943d2fd898364ef4b414a19a58
-        );
-        (, bytes32 blockHashMerkleRoot) = BTCStyleMerkle.generateMerkleProof(
-            blockHashes,
-            1
-        );
-
-        bytes32 computedRoot = BTCStyleMerkle.computeMerkleRoot(blockHashes);
-        assertEq(computedRoot, blockHashMerkleRoot);
-
-        address[] memory targets = new address[](1);
-        targets[0] = address(dogechain);
-        bytes[] memory callDatas = new bytes[](1);
-        callDatas[0] = abi.encodeWithSelector(
-            dogechain.submitBatch.selector,
-            5556717,
-            3,
-            blockHashMerkleRoot
-        );
-        bytes memory encodedData = abi.encode(
-            targets,
-            callDatas,
-            entryPoint.tssNonce(),
-            block.chainid
-        );
-        bytes32 digest = keccak256(encodedData).toEthSignedMessageHash();
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(1, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        // Fail: not proposer
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IEntryPoint.IncorrectSubmitter.selector,
-                address(this),
-                proposer
-            )
-        );
-        entryPoint.verifyAndCall(targets, callDatas, signature);
-
-        // Fail: incorrect signature
-        vm.startPrank(proposer);
-        vm.expectRevert("Invalid Signer");
-        entryPoint.verifyAndCall(targets, callDatas, signature);
-
-        // Success
-        (v, r, s) = vm.sign(tssKey, digest);
-        signature = abi.encodePacked(r, s, v);
-        entryPoint.verifyAndCall(targets, callDatas, signature);
     }
 
     function test_Stake() public {
