@@ -9,16 +9,25 @@ import {EntryPointUpgradeable} from "../src/EntryPointUpgradeable.sol";
 import {DogeTransactionParser} from "../src/libraries/DogeTransactionParser.sol";
 
 contract DogecoinBridgeScript is Script {
+    address tokenAddress;
+
     function setUp() public {}
 
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        tokenAddress = vm.envAddress("TOKEN_ADDRESS");
 
         vm.startBroadcast(deployerPrivateKey);
 
+        deployLogic();
+
+        vm.stopBroadcast();
+    }
+
+    function deploy() public {
         // Deploy EntryPoint
-        EntryPointUpgradeable entryPoint = EntryPointUpgradeable(
-            vm.envAddress("ENTRY_POINT")
+        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
+            tokenAddress
         );
         // Note: EntryPoint is left un-initialized
 
@@ -48,7 +57,17 @@ contract DogecoinBridgeScript is Script {
         console.log("DogeToken deployed at:", address(dogeToken));
         console.log("Dogechain deployed at:", address(dogechain));
         console.log("DogecoinBridge deployed at:", address(bridge));
+    }
 
-        vm.stopBroadcast();
+    function deployLogic() public {
+        // Deploy EntryPoint
+        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
+            tokenAddress
+        );
+        // Deploy DogecoinBridge
+        DogecoinBridge bridge = new DogecoinBridge();
+
+        console.log("EntryPoint deployed at:", address(entryPoint));
+        console.log("DogecoinBridge deployed at:", address(bridge));
     }
 }

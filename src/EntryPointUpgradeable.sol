@@ -161,7 +161,6 @@ contract EntryPointUpgradeable is
      * @param _signature The signature for verification.
      */
     function chooseNewSubmitter(
-        uint256 _uncompletedTaskCount,
         bytes calldata _signature
     ) external nonReentrant {
         require(isProposer[msg.sender], "Not Proposer");
@@ -176,7 +175,7 @@ contract EntryPointUpgradeable is
             _verifySignature(
                 keccak256(
                     abi.encodePacked(
-                        _uncompletedTaskCount,
+                        "chooseNewSubmitter",
                         tssNonce++,
                         block.chainid
                     )

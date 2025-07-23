@@ -224,7 +224,8 @@ contract DogecoinBridgeTest is Test {
             uint160(bytes20(hex"9e2516fffaaf9a3fb7d92868fa2d4bc452163a14"))
         );
 
-        IDogechain.BridgeTransaction[] memory bridgeTxs = new IDogechain.BridgeTransaction[](1);
+        IDogechain.BridgeTransaction[]
+            memory bridgeTxs = new IDogechain.BridgeTransaction[](1);
         bridgeTxs[0] = IDogechain.BridgeTransaction({
             destEvmAddress: destAddress,
             amount: 99900000,
@@ -257,32 +258,39 @@ contract DogecoinBridgeTest is Test {
     }
 
     function testBridgeOutFinish() public {
+        vm.startPrank(owner);
+        uint256 bridgeOutAmount = 1000442500000;
+        bytes20 destAddress = bytes20(
+            address(0x47B6ccAA4525A3E9A2806d7aeAdc978b49335537)
+        );
+        bridge.setFeeRate(0);
+        vm.stopPrank();
         vm.startPrank(address(entryPoint));
         dogechain.submitBatch(100, 3, bytes32(uint256(1))); // Dummy batch for testing
         vm.stopPrank();
 
         // Add bridge out task
         vm.startPrank(address(bridge));
-        dogeToken.mint(user, 1000);
+        dogeToken.mint(user, bridgeOutAmount);
         vm.stopPrank();
 
         vm.startPrank(user);
-        dogeToken.approve(address(bridge), 1000);
-        bridge.bridgeOut(500, bytes20("destination-address"));
+        dogeToken.approve(address(bridge), bridgeOutAmount);
+        bridge.bridgeOut(bridgeOutAmount, destAddress);
         vm.stopPrank();
 
         vm.startPrank(address(entryPoint));
         // Complete the bridge out by proposer
-        IDogechain.BridgeTransaction memory bridgeTx = IDogechain.BridgeTransaction({
-            destEvmAddress: address(proposer),
-            amount: 100,
-            txBytes: hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000"
-        });
+        IDogechain.BridgeOutTransaction memory bridgeTx = IDogechain
+            .BridgeOutTransaction({
+                amount: bridgeOutAmount,
+                txBytes: hex"01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff3503eec9540fe4b883e5bda9e7a59ee4bb99e9b1bc205b323032352d30312d32335430373a34323a32342e3534373132313330355a5dffffffff01a01305efe80000001976a91447b6ccaa4525a3e9a2806d7aeadc978b4933553788ac00000000"
+            });
 
         uint256[] memory taskIds = new uint256[](1);
         taskIds[0] = 0;
 
-        bridge.bridgeOutFinish(0, bridgeTx, taskIds);
+        bridge.bridgeOutFinish(bridgeTx, taskIds);
         (
             address from,
             uint256 destAmount,
@@ -291,8 +299,8 @@ contract DogecoinBridgeTest is Test {
         ) = bridge.bridgeOutTasks(0);
         assertEq(status, 5);
         assertEq(from, user);
-        assertEq(destAmount, 500);
-        assertEq(destDogecoinAddress, bytes20("destination-address"));
+        assertEq(destAmount, bridgeOutAmount);
+        assertEq(destDogecoinAddress, destAddress);
         assertEq(dogeToken.balanceOf(address(bridge)), 0); // Tokens burned
         vm.stopPrank();
     }

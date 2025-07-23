@@ -109,18 +109,34 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
             DogeTransactionParser.P2PKHOutput memory p2pkhOutput;
             bytes memory opReturnData;
             bool isP2PKHWithOpReturn;
-            (p2pkhOutput, opReturnData, isP2PKHWithOpReturn) = DogeTransactionParser.parseBridgeInP2PKHTransaction(bridgeTxs[i].txBytes);
+            (
+                p2pkhOutput,
+                opReturnData,
+                isP2PKHWithOpReturn
+            ) = DogeTransactionParser.parseBridgeInP2PKHTransaction(
+                bridgeTxs[i].txBytes
+            );
             require(isP2PKHWithOpReturn, "Invalid transaction");
-            require(p2pkhOutput.publicKeyHash == dogecoinBridgePK, "Invalid dogecoin bridge address");
+            require(
+                p2pkhOutput.publicKeyHash == dogecoinBridgePK,
+                "Invalid dogecoin bridge address"
+            );
             require(p2pkhOutput.value == bridgeTxs[i].amount, "Invalid amount");
-            require(opReturnData.length == 24 && bytes4(opReturnData) == opReturnMagicPrefix, "Invalid OP_RETURN data");
+            require(
+                opReturnData.length == 24 &&
+                    bytes4(opReturnData) == opReturnMagicPrefix,
+                "Invalid OP_RETURN data"
+            );
 
             bytes memory slicedData = new bytes(20);
             for (uint256 j = 4; j < 24; j++) {
                 slicedData[j - 4] = opReturnData[j];
             }
             address destAddress = address(uint160(bytes20(slicedData)));
-            require(destAddress == bridgeTxs[i].destEvmAddress, "Invalid destination address");
+            require(
+                destAddress == bridgeTxs[i].destEvmAddress,
+                "Invalid destination address"
+            );
 
             dogeToken.mint(destAddress, bridgeTxs[i].amount);
             totalAmount += bridgeTxs[i].amount;
@@ -196,13 +212,11 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
 
     /**
      * @dev Bridge out finish
-     * @param batchId The batch ID
      * @param bridgeTx The bridge transaction, one txid deals many bridge out tasks
      * @param taskIds The task IDs
      */
     function bridgeOutFinish(
-        uint256 batchId,
-        IDogechain.BridgeTransaction memory bridgeTx,
+        IDogechain.BridgeOutTransaction memory bridgeTx,
         uint256[] memory taskIds
     ) external onlyRole(ENTRYPOINT_ROLE) {
         bytes32 txid = DogeTransactionParser.getTxid(bridgeTx.txBytes);
@@ -211,9 +225,13 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
 
         // TODO: check doublehash(bridgeTx.txBytes) with bridgeTx.txHash
 
-        // TODO: extract p2pkhOutputs from bridgeTx.txBytes
-        // p2pkhOutputs = dogechain.extractBridgeOutTransaction(bridgeTx.txBytes);
-
+        (
+            DogeTransactionParser.P2PKHOutput[] memory p2pkhOutputs,
+            uint8 p2pkhOutputCount
+        ) = DogeTransactionParser.parseBridgeOutP2PKHTransaction(
+                bridgeTx.txBytes
+            );
+        require(p2pkhOutputCount == taskIds.length, "Invalid taskIds");
         for (uint256 i = 0; i < taskIds.length; i++) {
             uint256 taskId = taskIds[i];
             BridgeOutTask storage task = bridgeOutTasks[taskId];
@@ -221,8 +239,11 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
             require(task.status == 1, "Task is not in create status");
 
             // TODO enable this after real dogecoin bridge-in transaction is implemented
-            // require(task.destAmount == p2pkhOutputs[i].amount, "Invalid amount");
-            // require(task.destDogecoinAddress == p2pkhOutputs[i].dogecoinAddress, "Invalid destination address");
+            require(task.destAmount == p2pkhOutputs[i].value, "Invalid amount");
+            require(
+                task.destDogecoinAddress == p2pkhOutputs[i].publicKeyHash,
+                "Invalid destination address"
+            );
 
             task.status = 5;
             dogeToken.burn(task.destAmount);
