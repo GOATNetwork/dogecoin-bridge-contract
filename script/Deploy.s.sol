@@ -56,6 +56,7 @@ contract DogecoinBridgeScript is Script {
     }
 
     function deployLogic() public {
+        address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
         // Deploy EntryPoint
         EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
             tokenAddress
