@@ -9,30 +9,26 @@ import {EntryPointUpgradeable} from "../src/EntryPointUpgradeable.sol";
 import {DogeTransactionParser} from "../src/libraries/DogeTransactionParser.sol";
 
 contract DogecoinBridgeScript is Script {
-    address tokenAddress;
-
     function setUp() public {}
 
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        tokenAddress = vm.envAddress("TOKEN_ADDRESS");
 
         vm.startBroadcast(deployerPrivateKey);
 
-        deployLogic();
+        deploy();
 
         vm.stopBroadcast();
     }
 
     function deploy() public {
-        // Deploy EntryPoint
-        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
-            tokenAddress
-        );
-        // Note: EntryPoint is left un-initialized
-
         // Deploy DogeToken
         DogeToken dogeToken = new DogeToken();
+
+        // Deploy EntryPoint
+        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
+            address(dogeToken)
+        );
 
         // Deploy Dogechain
         Dogechain dogechain = new Dogechain();
