@@ -16,14 +16,19 @@ contract DogecoinBridgeScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy EntryPoint
-        EntryPointUpgradeable entryPoint = EntryPointUpgradeable(
-            vm.envAddress("ENTRY_POINT")
-        );
-        // Note: EntryPoint is left un-initialized
+        deploy();
 
+        vm.stopBroadcast();
+    }
+
+    function deploy() public {
         // Deploy DogeToken
         DogeToken dogeToken = new DogeToken();
+
+        // Deploy EntryPoint
+        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
+            address(dogeToken)
+        );
 
         // Deploy Dogechain
         Dogechain dogechain = new Dogechain();
@@ -48,7 +53,18 @@ contract DogecoinBridgeScript is Script {
         console.log("DogeToken deployed at:", address(dogeToken));
         console.log("Dogechain deployed at:", address(dogechain));
         console.log("DogecoinBridge deployed at:", address(bridge));
+    }
 
-        vm.stopBroadcast();
+    function deployLogic() public {
+        address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
+        // Deploy EntryPoint
+        EntryPointUpgradeable entryPoint = new EntryPointUpgradeable(
+            tokenAddress
+        );
+        // Deploy DogecoinBridge
+        DogecoinBridge bridge = new DogecoinBridge();
+
+        console.log("EntryPoint deployed at:", address(entryPoint));
+        console.log("DogecoinBridge deployed at:", address(bridge));
     }
 }

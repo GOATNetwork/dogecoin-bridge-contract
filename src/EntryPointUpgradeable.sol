@@ -30,7 +30,7 @@ contract EntryPointUpgradeable is
     uint256 public stakeThreshold;
     mapping(address => uint256) public stakedAmounts;
 
-    modifier checkSumitter() {
+    modifier checkSubmitter() {
         require(
             msg.sender == nextSubmitter,
             IncorrectSubmitter(msg.sender, nextSubmitter)
@@ -85,10 +85,28 @@ contract EntryPointUpgradeable is
         emit Unstake(msg.sender, _amount);
     }
 
+    function setStakeThreshold(
+        uint256 _newThreshold,
+        bytes calldata _signature
+    ) external checkSubmitter {
+        require(_newThreshold > 0, "Invalid Threshold");
+        require(
+            _verifySignature(
+                keccak256(
+                    abi.encodePacked(_newThreshold, tssNonce++, block.chainid)
+                ),
+                _signature
+            ),
+            "Invalid Signer"
+        );
+        stakeThreshold = _newThreshold;
+        emit StakeThresholdUpdated(_newThreshold);
+    }
+
     function setProposers(
         address[] calldata _newProposers,
         bytes calldata _signature
-    ) external checkSumitter {
+    ) external checkSubmitter {
         require(
             _newProposers.length > MIN_PARTICIPANT_COUNT,
             "Not Enough Proposers"
@@ -122,7 +140,7 @@ contract EntryPointUpgradeable is
     function setSignerAddress(
         address _newSigner,
         bytes calldata _signature
-    ) external checkSumitter {
+    ) external checkSubmitter {
         require(_newSigner != address(0), "Invalid Address");
         require(
             _verifySignature(
@@ -143,7 +161,6 @@ contract EntryPointUpgradeable is
      * @param _signature The signature for verification.
      */
     function chooseNewSubmitter(
-        uint256 _uncompletedTaskCount,
         bytes calldata _signature
     ) external nonReentrant {
         require(isProposer[msg.sender], "Not Proposer");
@@ -158,7 +175,7 @@ contract EntryPointUpgradeable is
             _verifySignature(
                 keccak256(
                     abi.encodePacked(
-                        _uncompletedTaskCount,
+                        "chooseNewSubmitter",
                         tssNonce++,
                         block.chainid
                     )
@@ -173,26 +190,33 @@ contract EntryPointUpgradeable is
 
     /**
      * @dev Entry point for all task handlers
-     * @param _target The contract address to be called.
+     * @param _targets The contract address to be called.
      * @param _calldata The calldata of the function to be called.
      * @param _signature The signature for verification.
      */
     function verifyAndCall(
-        address _target,
-        bytes calldata _calldata,
+        address[] calldata _targets,
+        bytes[] calldata _calldata,
         bytes calldata _signature
-    ) external checkSumitter nonReentrant {
+    ) external checkSubmitter nonReentrant returns (bool[] memory res) {
+        require(
+            _targets.length == _calldata.length,
+            "Targets and Calldata Length Mismatch"
+        );
         require(
             _verifySignature(
                 keccak256(
-                    abi.encodePacked(_calldata, tssNonce++, block.chainid)
+                    abi.encode(_targets, _calldata, tssNonce++, block.chainid)
                 ),
                 _signature
             ),
             "Invalid Signer"
         );
-        (bool success, ) = _target.call(_calldata);
-        require(success, "Call Failed");
+        res = new bool[](_targets.length);
+        for (uint256 i = 0; i < _targets.length; ++i) {
+            (res[i], ) = _targets[i].call(_calldata[i]);
+        }
+        return res;
     }
 
     /**
