@@ -25,7 +25,12 @@ contract DogecoinBridgeScript is Script {
         EntryPointUpgradeable entryPointContract = EntryPointUpgradeable(
             entryPoint
         );
-        entryPointContract.initialize(tssSigner, proposers);
+        // owner is the tx sender (deployer)
+        entryPointContract.initialize(
+            vm.addr(deployerPrivateKey),
+            tssSigner,
+            proposers
+        );
 
         vm.stopBroadcast();
     }

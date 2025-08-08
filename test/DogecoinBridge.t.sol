@@ -39,7 +39,7 @@ contract DogecoinBridgeTest is Test {
         entryPoint = new EntryPointUpgradeable(address(mockToken));
         address[] memory proposers = new address[](1);
         proposers[0] = proposer;
-        entryPoint.initialize(tssSigner, proposers);
+        entryPoint.initialize(owner, tssSigner, proposers);
 
         dogeToken = new DogeToken();
 

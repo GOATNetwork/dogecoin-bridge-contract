@@ -8,19 +8,6 @@
 | Dogechain      | 0x08459E0CE8136B8DD31088567a25D4ead80a1101 |
 | DogecoinBridge | 0xE31f99D0F64f9E0A1b2855aA4f4D0888Ba14aC22 |
 
-tss: 0x
-
-## Foundry
-
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
-
-Foundry consists of:
-
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
 ## Documentation
 
 https://book.getfoundry.sh/

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -13,28 +14,43 @@ import {IEntryPoint} from "./interfaces/IEntryPoint.sol";
 contract EntryPointUpgradeable is
     IEntryPoint,
     Initializable,
-    ReentrancyGuardUpgradeable
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable
 {
+    /// @notice Time window after which any proposer may submit if the current submitter is inactive.
     uint256 public constant FORCE_ROTATION_WINDOW = 1 minutes;
     uint256 public constant MIN_PARTICIPANT_COUNT = 3;
+    /// @notice Cooldown window measured in `txId` increments required between proposer removals.
+    uint256 public constant PROPOSER_REMOVE_WINDOW = 3;
     address public immutable stakeToken;
 
+    uint256 public txId;
     uint256 public lastSubmissionTime;
+    /// @notice The `txId` value recorded at the time of the last proposer removal.
+    uint256 public lastRemoveProposerTxId;
     uint256 public tssNonce;
     address public tssSigner;
 
     address[] public proposers;
+    /// @notice Address for the pending proposer add/remove request. Uses sentinel `address(1)` when empty.
+    address public pendingProposer;
     address public nextSubmitter;
     mapping(address => bool) public isProposer;
 
     uint256 public stakeThreshold;
     mapping(address => uint256) public stakedAmounts;
 
+    /// @dev Restricts callers to the active submitter within the rotation window, or any proposer after it.
+    ///      Also enforces that the caller has staked at least `stakeThreshold`. Always rotates submitter after.
     modifier checkSubmitter() {
-        require(
-            msg.sender == nextSubmitter,
-            IncorrectSubmitter(msg.sender, nextSubmitter)
-        );
+        if (block.timestamp >= lastSubmissionTime + FORCE_ROTATION_WINDOW) {
+            require(isProposer[msg.sender], "Not Proposer");
+        } else {
+            require(
+                msg.sender == nextSubmitter,
+                IncorrectSubmitter(msg.sender, nextSubmitter)
+            );
+        }
         require(
             stakedAmounts[msg.sender] >= stakeThreshold,
             "Submitter has no staked amount"
@@ -52,11 +68,12 @@ contract EntryPointUpgradeable is
      * @param _tssSigner The address of tssSigner.
      */
     function initialize(
+        address _owner,
         address _tssSigner,
         address[] calldata _initialProposers
     ) public initializer {
         __ReentrancyGuard_init();
-
+        __Ownable_init(_owner);
         require(_tssSigner != address(0), "Invalid Address");
         tssSigner = _tssSigner;
         lastSubmissionTime = block.timestamp;
@@ -103,35 +120,6 @@ contract EntryPointUpgradeable is
         emit StakeThresholdUpdated(_newThreshold);
     }
 
-    function setProposers(
-        address[] calldata _newProposers,
-        bytes calldata _signature
-    ) external checkSubmitter {
-        require(
-            _newProposers.length > MIN_PARTICIPANT_COUNT,
-            "Not Enough Proposers"
-        );
-        require(
-            _verifySignature(
-                keccak256(
-                    abi.encodePacked(_newProposers, tssNonce++, block.chainid)
-                ),
-                _signature
-            ),
-            "Invalid Signer"
-        );
-        // Reset existing proposers
-        for (uint256 i; i < proposers.length; ++i) {
-            isProposer[proposers[i]] = false;
-        }
-        // add new proposers
-        proposers = _newProposers;
-        for (uint256 i; i < _newProposers.length; ++i) {
-            isProposer[_newProposers[i]] = true;
-        }
-        emit SetProposer(_newProposers);
-    }
-
     /**
      * @dev Set new tssSigner address.
      * @param _newSigner The new tssSigner address.
@@ -157,35 +145,75 @@ contract EntryPointUpgradeable is
     }
 
     /**
-     * @dev Pick new random submitter if the current submitter is inactive for too long.
-     * @param _signature The signature for verification.
+     * @notice Initiates an add/remove proposer action.
+     * @dev Only callable by the owner. When `_proposer` is not currently a proposer,
+     *      this requests an addition and emits `AddProposerRequested`.
+     *      When `_proposer` is currently a proposer, this requests a removal and emits `RemoveProposerRequested`.
+     *      For removals a cooldown measured in `txId` is enforced: `txId >= lastRemoveProposerTxId + PROPOSER_REMOVE_WINDOW`.
+     *      The action is finalized by calling `proposerConfirm` with a valid TSS signature.
+     * @param _proposer The address to add to or remove from the proposer set.
+     *
+     * Requirements:
+     * - `pendingProposer` must be the sentinel address `address(1)` (no pending request).
+     * - For removals, the cooldown window must have passed.
      */
-    function chooseNewSubmitter(
+    function proposerRequest(address _proposer) external onlyOwner {
+        require(pendingProposer == address(1), "Pending Proposer Not Empty");
+        if (isProposer[_proposer]) {
+            // Request to remove an existing proposer; enforce cooldown window
+            require(
+                txId >= lastRemoveProposerTxId + PROPOSER_REMOVE_WINDOW,
+                "Proposer remove window not passed"
+            );
+            emit RemoveProposerRequested(_proposer, block.timestamp);
+        } else {
+            // Request to add a new proposer
+            emit AddProposerRequested(_proposer, block.timestamp);
+        }
+        pendingProposer = _proposer;
+    }
+
+    /**
+     * @notice Confirms the pending proposer add/remove request.
+     * @dev Verifies the TSS signature over `abi.encodePacked(_proposer, tssNonce++, block.chainid)`.
+     *      If `_proposer` is not currently a proposer, it is added; otherwise it is removed.
+     *      On successful execution, `pendingProposer` is reset to the sentinel `address(1)`.
+     *      When removing, `lastRemoveProposerTxId` is updated to the current `txId`.
+     * @param _proposer The address to add or remove.
+     * @param _signature The TSS signature approving the operation.
+     */
+    function proposerConfirm(
+        address _proposer,
         bytes calldata _signature
-    ) external nonReentrant {
-        require(isProposer[msg.sender], "Not Proposer");
-        require(
-            block.timestamp >= lastSubmissionTime + FORCE_ROTATION_WINDOW,
-            RotationWindowNotPassed(
-                block.timestamp,
-                lastSubmissionTime + FORCE_ROTATION_WINDOW
-            )
-        );
+    ) external {
+        require(pendingProposer == _proposer, "Pending Proposer Not Matched");
         require(
             _verifySignature(
                 keccak256(
-                    abi.encodePacked(
-                        "chooseNewSubmitter",
-                        tssNonce++,
-                        block.chainid
-                    )
+                    abi.encodePacked(_proposer, tssNonce++, block.chainid)
                 ),
                 _signature
             ),
             "Invalid Signer"
         );
-        emit SubmitterRotationRequested(msg.sender, nextSubmitter);
-        _rotateSubmitter();
+        if (!isProposer[_proposer]) {
+            // Add proposer
+            proposers.push(_proposer);
+            isProposer[_proposer] = true;
+        } else {
+            // Remove proposer
+            isProposer[_proposer] = false;
+            for (uint256 i; i < proposers.length; ++i) {
+                if (proposers[i] == _proposer) {
+                    proposers[i] = proposers[proposers.length - 1];
+                    proposers.pop();
+                    break;
+                }
+            }
+            lastRemoveProposerTxId = txId;
+        }
+        pendingProposer = address(1);
+        emit ProposerConfirmed(_proposer, block.timestamp);
     }
 
     /**
@@ -242,6 +270,7 @@ contract EntryPointUpgradeable is
     function _rotateSubmitter() internal {
         lastSubmissionTime = block.timestamp;
         nextSubmitter = _getRandomProposer(nextSubmitter);
+        ++txId;
         emit SubmitterChosen(nextSubmitter);
     }
 

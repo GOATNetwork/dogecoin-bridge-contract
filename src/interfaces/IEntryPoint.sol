@@ -6,7 +6,9 @@ contract IEntryPoint {
     event Unstake(address indexed staker, uint256 amount);
     event SetSigner(address indexed newSigner);
     event StakeThresholdUpdated(uint256 newThreshold);
-    event SetProposer(address[] participants);
+    event AddProposerRequested(address proposer, uint256 timestamp);
+    event RemoveProposerRequested(address proposer, uint256 timestamp);
+    event ProposerConfirmed(address proposer, uint256 timestamp);
     event SubmitterChosen(address indexed newSubmitter);
     event SubmitterRotationRequested(
         address indexed requester,
