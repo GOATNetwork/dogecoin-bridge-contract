@@ -17,7 +17,7 @@ contract EntryPointUpgradeable is
     ReentrancyGuardUpgradeable,
     OwnableUpgradeable
 {
-    /// @notice Time window after which any proposer may submit if the current submitter is inactive.
+    /// @notice Time window after which any proposer may submit if the current proposer is inactive.
     uint256 public constant FORCE_ROTATION_WINDOW = 1 minutes;
     uint256 public constant MIN_PARTICIPANT_COUNT = 3;
     /// @notice Cooldown window measured in `txId` increments required between proposer removals.
@@ -34,29 +34,29 @@ contract EntryPointUpgradeable is
     address[] public proposers;
     /// @notice Address for the pending proposer add/remove request. Uses sentinel `address(1)` when empty.
     address public pendingProposer;
-    address public nextSubmitter;
+    address public nextProposer;
     mapping(address => bool) public isProposer;
 
     uint256 public stakeThreshold;
     mapping(address => uint256) public stakedAmounts;
 
-    /// @dev Restricts callers to the active submitter within the rotation window, or any proposer after it.
-    ///      Also enforces that the caller has staked at least `stakeThreshold`. Always rotates submitter after.
-    modifier checkSubmitter() {
+    /// @dev Restricts callers to the active proposer within the rotation window, or any proposer after it.
+    ///      Also enforces that the caller has staked at least `stakeThreshold`. Always rotates proposer after.
+    modifier checkProposer() {
         if (block.timestamp >= lastSubmissionTime + FORCE_ROTATION_WINDOW) {
             require(isProposer[msg.sender], "Not Proposer");
         } else {
             require(
-                msg.sender == nextSubmitter,
-                IncorrectSubmitter(msg.sender, nextSubmitter)
+                msg.sender == nextProposer,
+                IncorrectProposer(msg.sender, nextProposer)
             );
         }
         require(
             stakedAmounts[msg.sender] >= stakeThreshold,
-            "Submitter has no staked amount"
+            "Proposer has no staked amount"
         );
         _;
-        _rotateSubmitter();
+        _rotateProposer();
     }
 
     constructor(address _stakeToken) {
@@ -81,8 +81,8 @@ contract EntryPointUpgradeable is
         for (uint256 i; i < _initialProposers.length; ++i) {
             isProposer[_initialProposers[i]] = true;
         }
-        nextSubmitter = _getRandomProposer(nextSubmitter);
-        emit SubmitterChosen(nextSubmitter);
+        nextProposer = _getRandomProposer(nextProposer);
+        emit ProposerSelected(nextProposer);
     }
 
     function stake(uint256 _amount) external {
@@ -105,7 +105,7 @@ contract EntryPointUpgradeable is
     function setStakeThreshold(
         uint256 _newThreshold,
         bytes calldata _signature
-    ) external checkSubmitter {
+    ) external checkProposer {
         require(_newThreshold > 0, "Invalid Threshold");
         require(
             _verifySignature(
@@ -128,7 +128,7 @@ contract EntryPointUpgradeable is
     function setSignerAddress(
         address _newSigner,
         bytes calldata _signature
-    ) external checkSubmitter {
+    ) external checkProposer {
         require(_newSigner != address(0), "Invalid Address");
         require(
             _verifySignature(
@@ -226,7 +226,7 @@ contract EntryPointUpgradeable is
         address[] calldata _targets,
         bytes[] calldata _calldata,
         bytes calldata _signature
-    ) external checkSubmitter nonReentrant returns (bool[] memory res) {
+    ) external checkProposer nonReentrant returns (bool[] memory res) {
         require(
             _targets.length == _calldata.length,
             "Targets and Calldata Length Mismatch"
@@ -267,11 +267,11 @@ contract EntryPointUpgradeable is
     /**
      * @dev Pick a new random submiter from the proposer list.
      */
-    function _rotateSubmitter() internal {
+    function _rotateProposer() internal {
         lastSubmissionTime = block.timestamp;
-        nextSubmitter = _getRandomProposer(nextSubmitter);
+        nextProposer = _getRandomProposer(nextProposer);
         ++txId;
-        emit SubmitterChosen(nextSubmitter);
+        emit ProposerSelected(nextProposer);
     }
 
     function _getRandomProposer(address _salt) internal view returns (address) {

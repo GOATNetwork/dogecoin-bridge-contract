@@ -36,14 +36,6 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         uint256 amount,
         bytes32 txHash
     );
-    /**
-     * @dev Bridge out event
-     * @param taskId The task ID
-     * @param from The address of the user
-     * @param destAmount The amount of the destination currency (18 decimals, bridge should convert to 8 decimals on Dogechain)
-     * @param fee The fee for the bridge out
-     * @param destDogecoinAddress The destination address (Dogechain address)
-     */
     event BridgeOutProposed(
         uint256 taskId,
         address indexed from,

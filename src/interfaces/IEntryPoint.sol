@@ -9,12 +9,8 @@ contract IEntryPoint {
     event AddProposerRequested(address proposer, uint256 timestamp);
     event RemoveProposerRequested(address proposer, uint256 timestamp);
     event ProposerConfirmed(address proposer, uint256 timestamp);
-    event SubmitterChosen(address indexed newSubmitter);
-    event SubmitterRotationRequested(
-        address indexed requester,
-        address indexed currentSubmitter
-    );
+    event ProposerSelected(address indexed newProposer);
 
-    error IncorrectSubmitter(address sender, address submitter);
+    error IncorrectProposer(address sender, address proposer);
     error RotationWindowNotPassed(uint256 current, uint256 window);
 }
