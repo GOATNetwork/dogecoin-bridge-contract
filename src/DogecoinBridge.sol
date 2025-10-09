@@ -91,49 +91,17 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         for (uint256 i = 0; i < bridgeTxs.length; i++) {
             bytes32 txid = DogeTransactionParser.getTxid(bridgeTxs[i].txBytes);
             require(txid != bytes32(0), "Invalid txid");
+            require(bridgeInTxids[txid] == false, "Txid already processed");
             require(
                 bridgeTxs[i].destEvmAddress != address(0),
                 "Invalid destEvmAddress"
             );
-            require(bridgeInTxids[txid] == false, "Txid already processed");
+            require(bridgeTxs[i].amount > 0, "Invalid amount");
 
-            // check opReturnMagicPrefix, p2pkhOutput, amount, destEvmAddress from bridgeTxs[i].txBytes
-            DogeTransactionParser.P2PKHOutput memory p2pkhOutput;
-            bytes memory opReturnData;
-            bool isP2PKHWithOpReturn;
-            (
-                p2pkhOutput,
-                opReturnData,
-                isP2PKHWithOpReturn
-            ) = DogeTransactionParser.parseBridgeInP2PKHTransaction(
-                bridgeTxs[i].txBytes
-            );
-            require(isP2PKHWithOpReturn, "Invalid transaction");
-            require(
-                p2pkhOutput.publicKeyHash == dogecoinBridgePK,
-                "Invalid dogecoin bridge address"
-            );
-            require(p2pkhOutput.value == bridgeTxs[i].amount, "Invalid amount");
-            require(
-                opReturnData.length == 24 &&
-                    bytes4(opReturnData) == opReturnMagicPrefix,
-                "Invalid OP_RETURN data"
-            );
-
-            bytes memory slicedData = new bytes(20);
-            for (uint256 j = 4; j < 24; j++) {
-                slicedData[j - 4] = opReturnData[j];
-            }
-            address destAddress = address(uint160(bytes20(slicedData)));
-            require(
-                destAddress == bridgeTxs[i].destEvmAddress,
-                "Invalid destination address"
-            );
-
-            dogeToken.mint(destAddress, bridgeTxs[i].amount);
+            dogeToken.mint(bridgeTxs[i].destEvmAddress, bridgeTxs[i].amount);
             totalAmount += bridgeTxs[i].amount;
             bridgeInTxids[txid] = true;
-            emit BridgeIn(destAddress, bridgeTxs[i].amount, txid);
+            emit BridgeIn(bridgeTxs[i].destEvmAddress, bridgeTxs[i].amount, txid);
         }
 
         bridgedInAmount += totalAmount;
@@ -215,27 +183,11 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         require(txid != bytes32(0), "Invalid txid");
         require(taskIds.length > 0, "Invalid taskIds");
 
-        // TODO: check doublehash(bridgeTx.txBytes) with bridgeTx.txHash
-
-        (
-            DogeTransactionParser.P2PKHOutput[] memory p2pkhOutputs,
-            uint8 p2pkhOutputCount
-        ) = DogeTransactionParser.parseBridgeOutP2PKHTransaction(
-                bridgeTx.txBytes
-            );
-        require(p2pkhOutputCount == taskIds.length, "Invalid taskIds");
         for (uint256 i = 0; i < taskIds.length; i++) {
             uint256 taskId = taskIds[i];
             BridgeOutTask storage task = bridgeOutTasks[taskId];
             require(task.from != address(0), "Task does not exist");
             require(task.status == 1, "Task is not in create status");
-
-            // TODO enable this after real dogecoin bridge-in transaction is implemented
-            require(task.destAmount == p2pkhOutputs[i].value, "Invalid amount");
-            require(
-                task.destDogecoinAddress == p2pkhOutputs[i].publicKeyHash,
-                "Invalid destination address"
-            );
 
             task.status = 5;
             dogeToken.burn(task.destAmount);
