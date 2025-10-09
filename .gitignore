@@ -16,3 +16,9 @@ docs/
 
 # forge
 broadcast/
+
+# ide
+.vscode/
+
+.DS_Store
+
