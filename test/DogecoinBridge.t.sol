@@ -346,7 +346,7 @@ contract DogecoinBridgeTest is Test {
         // Fail: not proposer
         vm.expectRevert(
             abi.encodeWithSelector(
-                IEntryPoint.IncorrectSubmitter.selector,
+                IEntryPoint.IncorrectProposer.selector,
                 address(this),
                 proposer
             )
