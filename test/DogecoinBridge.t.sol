@@ -233,7 +233,7 @@ contract DogecoinBridgeTest is Test {
         });
 
         // Bridge in tokens
-        bridge.bridgeIn(bridgeTxs, 0);
+        bridge.bridgeIn(bridgeTxs);
 
         assertEq(dogeToken.balanceOf(destAddress), 99900000);
         vm.stopPrank();

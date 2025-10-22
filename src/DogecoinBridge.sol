@@ -81,12 +81,8 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     ) internal override onlyRole(OWNER_ROLE) {}
 
     function bridgeIn(
-        IDogechain.BridgeTransaction[] memory bridgeTxs,
-        uint256 batchId
+        IDogechain.BridgeTransaction[] memory bridgeTxs
     ) external onlyRole(ENTRYPOINT_ROLE) {
-        IDogechain.Batch memory batch = dogechain.getBatch(batchId);
-        require(batch.rootHash != bytes32(0), "Invalid batch");
-
         uint256 totalAmount = 0;
         for (uint256 i = 0; i < bridgeTxs.length; i++) {
             bytes32 txid = DogeTransactionParser.getTxid(bridgeTxs[i].txBytes);
@@ -101,7 +97,11 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
             dogeToken.mint(bridgeTxs[i].destEvmAddress, bridgeTxs[i].amount);
             totalAmount += bridgeTxs[i].amount;
             bridgeInTxids[txid] = true;
-            emit BridgeIn(bridgeTxs[i].destEvmAddress, bridgeTxs[i].amount, txid);
+            emit BridgeIn(
+                bridgeTxs[i].destEvmAddress,
+                bridgeTxs[i].amount,
+                txid
+            );
         }
 
         bridgedInAmount += totalAmount;
