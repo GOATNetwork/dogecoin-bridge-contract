@@ -242,7 +242,14 @@ contract EntryPointUpgradeable is
         );
         res = new bool[](_targets.length);
         for (uint256 i = 0; i < _targets.length; ++i) {
-            (res[i], ) = _targets[i].call(_calldata[i]);
+            (bool success, bytes memory returndata) = _targets[i].call(_calldata[i]);
+            if (!success) {
+                // Bubble up the exact revert reason from the target
+                assembly {
+                    revert(add(returndata, 0x20), mload(returndata))
+                }
+            }
+            res[i] = true;
         }
         return res;
     }
