@@ -43,7 +43,7 @@ contract DogecoinBridgeScript is Script {
             10,
             bytes20(0),
             bytes4(0x47514556),
-            DogeTransactionParser.Network.MAINNET
+            DogeTransactionParser.Network.REGTEST
         ); // Fee rate: 0.1%
 
         // Configure DogeToken bridge address
