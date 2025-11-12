@@ -41,7 +41,7 @@ contract DogecoinBridgeScript is Script {
             address(dogeToken),
             address(dogechain),
             10,
-            hex"059ce0647de86cf966dfa4656a08530eb8f26772",
+            hex"f79c57c0b9932a571367e1fa2fbda606424ade32",
             bytes4(0x47514556),
             DogeTransactionParser.Network.REGTEST
         ); // Fee rate: 0.1%
