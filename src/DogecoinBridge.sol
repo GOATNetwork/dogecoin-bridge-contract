@@ -130,10 +130,10 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         uint256 destAmount = amount - fee;
 
         require(
-            dogeToken.balanceOf(msg.sender) >= amount,
+            dogeToken.balanceOf(msg.sender) >= destAmount,
             "Insufficient balance"
         );
-        dogeToken.transferFrom(msg.sender, address(this), amount);
+        dogeToken.transferFrom(msg.sender, address(this), destAmount);
 
         uint256 taskId = latestTaskId++;
         bridgeOutTasks[taskId] = BridgeOutTask({
