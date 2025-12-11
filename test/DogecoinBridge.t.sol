@@ -229,6 +229,7 @@ contract DogecoinBridgeTest is Test {
         bridgeTxs[0] = IDogechain.BridgeTransaction({
             destEvmAddress: destAddress,
             amount: 99900000,
+            txout: 0,
             txBytes: hex"02000000011615c449a5b2f572e5c3693e89c9c4be0bf021a68c68359b725537aa58376a7a010000006b4830450221009d46ea44468ca4600219d4e0dc949e14d92740bb3efeed5dad42d45c9a78ae6d02201bfc5d1f7b2b111ef5d022fc6c4e3b6a3f5ed296d23e3081595e50d6e8dd52e501210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000"
         });
 
@@ -236,6 +237,50 @@ contract DogecoinBridgeTest is Test {
         bridge.bridgeIn(bridgeTxs);
 
         assertEq(dogeToken.balanceOf(destAddress), 99900000);
+        vm.stopPrank();
+    }
+
+    function testBridgeInWithSameTxDifferentOutputs() public {
+        vm.startPrank(address(entryPoint));
+
+        bytes
+            memory txData = hex"02000000011615c449a5b2f572e5c3693e89c9c4be0bf021a68c68359b725537aa58376a7a010000006b4830450221009d46ea44468ca4600219d4e0dc949e14d92740bb3efeed5dad42d45c9a78ae6d02201bfc5d1f7b2b111ef5d022fc6c4e3b6a3f5ed296d23e3081595e50d6e8dd52e501210361e82e71277ea205814b1cb69777abe5fc417c03d4d39829cefb8f92da08b1fcffffffff02605af405000000001976a914059ce0647de86cf966dfa4656a08530eb8f2677288ac00000000000000001a6a18475456319e2516fffaaf9a3fb7d92868fa2d4bc452163a1400000000";
+
+        address dest1 = address(0xA11CE);
+        address dest2 = address(0xB0B);
+
+        IDogechain.BridgeTransaction[]
+            memory bridgeTxs = new IDogechain.BridgeTransaction[](2);
+        bridgeTxs[0] = IDogechain.BridgeTransaction({
+            destEvmAddress: dest1,
+            amount: 1,
+            txout: 0,
+            txBytes: txData
+        });
+        bridgeTxs[1] = IDogechain.BridgeTransaction({
+            destEvmAddress: dest2,
+            amount: 2,
+            txout: 1,
+            txBytes: txData
+        });
+
+        bridge.bridgeIn(bridgeTxs);
+
+        assertEq(dogeToken.balanceOf(dest1), 1);
+        assertEq(dogeToken.balanceOf(dest2), 2);
+        assertEq(bridge.bridgedInAmount(), 3);
+
+        IDogechain.BridgeTransaction[]
+            memory duplicateTxs = new IDogechain.BridgeTransaction[](1);
+        duplicateTxs[0] = IDogechain.BridgeTransaction({
+            destEvmAddress: dest1,
+            amount: 5,
+            txout: 0,
+            txBytes: txData
+        });
+
+        vm.expectRevert("Tx output already processed");
+        bridge.bridgeIn(duplicateTxs);
         vm.stopPrank();
     }
 
