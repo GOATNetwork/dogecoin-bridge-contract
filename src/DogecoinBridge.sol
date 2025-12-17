@@ -35,7 +35,8 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     event BridgeIn(
         address indexed destEvmAddress,
         uint256 amount,
-        bytes32 txHash
+        bytes32 txHash,
+        uint32 txOut
     );
     event BridgeOutProposed(
         uint256 taskId,
@@ -107,7 +108,8 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
             emit BridgeIn(
                 bridgeTxs[i].destEvmAddress,
                 bridgeTxs[i].amount,
-                txid
+                txid,
+                bridgeTxs[i].txout
             );
         }
 
