@@ -18,6 +18,7 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant ENTRYPOINT_ROLE = keccak256("ENTRYPOINT_ROLE");
 
+    // keccak256(txid, txout) => processed flag
     mapping(bytes32 => bool) public bridgeInTxids;
     mapping(uint256 => BridgeOutTask) public bridgeOutTasks;
     uint256 public latestTaskId;
@@ -34,7 +35,8 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
     event BridgeIn(
         address indexed destEvmAddress,
         uint256 amount,
-        bytes32 txHash
+        bytes32 txHash,
+        uint32 txOut
     );
     event BridgeOutProposed(
         uint256 taskId,
@@ -87,7 +89,13 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         for (uint256 i = 0; i < bridgeTxs.length; i++) {
             bytes32 txid = DogeTransactionParser.getTxid(bridgeTxs[i].txBytes);
             require(txid != bytes32(0), "Invalid txid");
-            require(bridgeInTxids[txid] == false, "Txid already processed");
+            bytes32 bridgeInKey = keccak256(
+                abi.encode(txid, bridgeTxs[i].txout)
+            );
+            require(
+                bridgeInTxids[bridgeInKey] == false,
+                "Tx output already processed"
+            );
             require(
                 bridgeTxs[i].destEvmAddress != address(0),
                 "Invalid destEvmAddress"
@@ -96,11 +104,12 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
 
             dogeToken.mint(bridgeTxs[i].destEvmAddress, bridgeTxs[i].amount);
             totalAmount += bridgeTxs[i].amount;
-            bridgeInTxids[txid] = true;
+            bridgeInTxids[bridgeInKey] = true;
             emit BridgeIn(
                 bridgeTxs[i].destEvmAddress,
                 bridgeTxs[i].amount,
-                txid
+                txid,
+                bridgeTxs[i].txout
             );
         }
 
@@ -123,10 +132,10 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         uint256 destAmount = amount - fee;
 
         require(
-            dogeToken.balanceOf(msg.sender) >= amount,
+            dogeToken.balanceOf(msg.sender) >= destAmount,
             "Insufficient balance"
         );
-        dogeToken.transferFrom(msg.sender, address(this), amount);
+        dogeToken.transferFrom(msg.sender, address(this), destAmount);
 
         uint256 taskId = latestTaskId++;
         bridgeOutTasks[taskId] = BridgeOutTask({

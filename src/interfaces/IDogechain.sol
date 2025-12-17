@@ -5,6 +5,7 @@ interface IDogechain {
     struct BridgeTransaction {
         address destEvmAddress;
         uint256 amount; // dogecoin 8 decimal to 18 decimal
+        uint32 txout; // vout index for P2SH/P2PKH bridge-in
         bytes txBytes; // use to bridge-in tx data check
     }
 
