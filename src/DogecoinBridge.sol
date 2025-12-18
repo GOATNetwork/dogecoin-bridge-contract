@@ -45,7 +45,7 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
         uint256 fee,
         bytes20 destDogecoinAddress
     );
-    event BridgeOutFinished(uint256[] taskIds);
+    event BridgeOutFinished(uint256[] taskIds, bytes32 txid);
     event FeesWithdrawn(address indexed owner, uint256 amount);
     event FeeRateUpdated(address indexed owner, uint256 feeRate);
     event DogecoinBridgePKUpdated(
@@ -204,7 +204,7 @@ contract DogecoinBridge is UUPSUpgradeable, AccessControlUpgradeable {
             bridgedOutAmount += task.destAmount;
         }
 
-        emit BridgeOutFinished(taskIds);
+        emit BridgeOutFinished(taskIds, txid);
     }
 
     function setFeeRate(uint256 _feeRate) external onlyRole(OWNER_ROLE) {
